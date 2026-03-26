@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { getBaseUrl } from "@/src/lib/base-url";
 
 async function getLeagueData() {
-  const res = await fetch("http://localhost:3000/api/league", {
+  const res = await fetch(`${getBaseUrl()}/api/league`, {
     cache: "no-store",
   });
 

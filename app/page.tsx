@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { getBaseUrl } from "@/src/lib/base-url";
 
 async function getSummary() {
-  const res = await fetch("http://localhost:3000/api/summary", {
+  const res = await fetch(`${getBaseUrl()}/api/summary`, {
     cache: "no-store",
   });
 
@@ -14,7 +15,7 @@ async function getSummary() {
 }
 
 async function getNextMatch() {
-  const res = await fetch("http://localhost:3000/api/next-match", {
+  const res = await fetch(`${getBaseUrl()}/api/next-match`, {
     cache: "no-store",
   });
 

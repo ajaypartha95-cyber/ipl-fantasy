@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { getBaseUrl } from "@/src/lib/base-url";
 
 async function getComparison(team2: string) {
   const res = await fetch(
-    `http://localhost:3000/api/compare?team1=1&team2=${team2}`,
+  `${getBaseUrl()}/api/compare?team1=1&team2=${team2}`,
     {
       cache: "no-store",
     }
@@ -17,7 +18,7 @@ async function getComparison(team2: string) {
 }
 
 async function getTeams() {
-  const res = await fetch("http://localhost:3000/api/compare-teams", {
+  const res = await fetch(`${getBaseUrl()}/api/compare-teams`, {
     cache: "no-store",
   });
 

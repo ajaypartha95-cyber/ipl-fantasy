@@ -1,5 +1,6 @@
+import { getBaseUrl } from "@/src/lib/base-url";
 async function getTeam(id: string) {
-  const res = await fetch(`http://localhost:3000/api/team/${id}`, {
+  const res = await fetch(`${getBaseUrl()}/api/team/${id}`, {
     cache: "no-store",
   });
 
