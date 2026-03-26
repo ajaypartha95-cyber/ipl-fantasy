@@ -28,6 +28,9 @@ export default function RootLayout({
               <Link href="/league" className="hover:text-white transition">
                 League
               </Link>
+              <Link href="/leaderboard" className="hover:text-white transition">
+                Leaderboard
+              </Link>
               <Link href="/compare" className="hover:text-white transition">
                 Compare
               </Link>
@@ -39,6 +42,9 @@ export default function RootLayout({
               </Link>
               <Link href="/players" className="hover:text-white transition">
                 Players
+              </Link>
+              <Link href="/admin" className="hover:text-white transition">
+                Admin
               </Link>
             </nav>
           </div>
