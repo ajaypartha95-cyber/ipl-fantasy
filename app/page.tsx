@@ -32,6 +32,7 @@ function formatMatchDate(dateString: string) {
   return date.toLocaleString("en-IN", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Kolkata",
   });
 }
 
