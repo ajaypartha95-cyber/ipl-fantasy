@@ -1,4 +1,5 @@
 import { getBaseUrl } from "@/src/lib/base-url";
+import { requireSignedInProfile } from "@/lib/auth";
 import { PageShell } from "@/components/premium/page-shell";
 import { Panel } from "@/components/premium/panel";
 import { Pill } from "@/components/premium/pill";
@@ -6,20 +7,26 @@ import { MetricCard } from "@/components/premium/metric-card";
 import { SectionTitle } from "@/components/premium/section-title";
 import { PlayerRow } from "@/components/premium/player-row";
 
-async function getMyTeam() {
-  const res = await fetch(`${getBaseUrl()}/api/my-team`, {
+async function getTeam(teamId: number) {
+  const res = await fetch(`${getBaseUrl()}/api/team/${teamId}`, {
     cache: "no-store",
   });
 
   if (!res.ok) {
-    throw new Error("Failed to fetch my team");
+    throw new Error("Failed to fetch team");
   }
 
   return res.json();
 }
 
 export default async function MyTeamPage() {
-  const { team, players } = await getMyTeam();
+  const { team: currentTeam } = await requireSignedInProfile("/my-team");
+
+  if (!currentTeam) {
+    throw new Error("No fantasy team mapped to this user");
+  }
+
+  const { team, players } = await getTeam(currentTeam.id);
 
   const captainId = team.captain_player_id;
   const viceCaptainId = team.vice_captain_player_id;
@@ -133,12 +140,12 @@ export default async function MyTeamPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {Object.entries(roleCounts as Record<string, number>).map(
-  ([role, count]: [string, number]) => (
-    <Pill key={role} tone="default">
-      {role}: {count}
-    </Pill>
-  )
-)}
+                    ([role, count]: [string, number]) => (
+                      <Pill key={role} tone="default">
+                        {role}: {count}
+                      </Pill>
+                    )
+                  )}
                 </div>
               </div>
             </div>

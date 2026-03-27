@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBaseUrl } from "@/src/lib/base-url";
+import { requireSignedInProfile } from "@/lib/auth";
 import { PageShell } from "@/components/premium/page-shell";
 import { Panel } from "@/components/premium/panel";
 import { Pill } from "@/components/premium/pill";
@@ -7,9 +8,9 @@ import { MetricCard } from "@/components/premium/metric-card";
 import { SectionTitle } from "@/components/premium/section-title";
 import { PlayerChipCard } from "@/components/premium/player-chip-card";
 
-async function getComparison(team2: string) {
+async function getComparison(team1: string, team2: string) {
   const res = await fetch(
-    `${getBaseUrl()}/api/compare?team1=1&team2=${team2}`,
+    `${getBaseUrl()}/api/compare?team1=${team1}&team2=${team2}`,
     {
       cache: "no-store",
     }
@@ -64,15 +65,27 @@ export default async function ComparePage({
 }: {
   searchParams: Promise<{ team2?: string }>;
 }) {
+  const { team: currentTeam } = await requireSignedInProfile("/compare");
+
+  if (!currentTeam) {
+    throw new Error("No fantasy team mapped to this user");
+  }
+
   const params = await searchParams;
-  const selectedTeam2 = params.team2 || "2";
+  const allTeams = await getTeams();
+  const teamOptions = allTeams.filter((team: any) => team.id !== currentTeam.id);
 
-  const [comparison, teams] = await Promise.all([
-    getComparison(selectedTeam2),
-    getTeams(),
-  ]);
+  const selectedTeam2 =
+    params.team2 && params.team2 !== String(currentTeam.id)
+      ? params.team2
+      : String(teamOptions[0]?.id ?? "");
 
-  const teamOptions = teams.filter((team: any) => team.id !== 1);
+  if (!selectedTeam2) {
+    throw new Error("No comparison teams available");
+  }
+
+  const comparison = await getComparison(String(currentTeam.id), selectedTeam2);
+
   const selectedTeam = teamOptions.find(
     (team: any) => String(team.id) === selectedTeam2
   );
@@ -88,7 +101,7 @@ export default async function ComparePage({
           <div>
             <div className="flex flex-wrap gap-3">
               <Pill tone="gold">Squad compare</Pill>
-              <Pill tone="info">Ajay XI vs challenger</Pill>
+              <Pill tone="info">{currentTeam.team_name} vs challenger</Pill>
             </div>
 
             <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-[1.04] tracking-tight text-stone-50 md:text-5xl">
@@ -97,7 +110,7 @@ export default async function ComparePage({
             </h1>
 
             <p className="mt-4 max-w-2xl text-base leading-7 text-stone-300">
-              Compare Ajay XI against another squad to see shared picks, unique
+              Compare your squad against another team to see shared picks, unique
               punts, and where the fantasy edge could come from.
             </p>
 
@@ -109,7 +122,7 @@ export default async function ComparePage({
                 accent="emerald"
               />
               <MetricCard
-                label="Only in Ajay XI"
+                label={`Only in ${currentTeam.team_name}`}
                 value={comparison.onlyTeam1.length}
                 subtitle="Exclusive picks in your squad"
                 accent="cyan"
@@ -185,7 +198,9 @@ export default async function ComparePage({
         <div className="mt-6 grid gap-6 xl:grid-cols-3">
           <Panel className="p-6">
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-stone-50">Only in Ajay XI</h2>
+              <h2 className="text-2xl font-semibold text-stone-50">
+                Only in {currentTeam.team_name}
+              </h2>
               <Pill tone="info">{comparison.onlyTeam1.length}</Pill>
             </div>
             {renderPlayerGrid(comparison.onlyTeam1)}

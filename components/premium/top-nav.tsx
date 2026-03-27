@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { cx } from "./utils";
 
 const navItems = [
@@ -19,8 +21,66 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+type NavProfile = {
+  display_name: string;
+  is_admin: boolean;
+};
+
 export function TopNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [email, setEmail] = useState<string | null>(null);
+  const [profile, setProfile] = useState<NavProfile | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!active) return;
+
+      const nextEmail = user?.email?.toLowerCase() ?? null;
+      setEmail(nextEmail);
+
+      if (!nextEmail) {
+        setProfile(null);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name, is_admin")
+        .eq("email", nextEmail)
+        .maybeSingle();
+
+      if (!active) return;
+      setProfile(data ?? null);
+    }
+
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadUser();
+      router.refresh();
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [router, supabase]);
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#05070B]/72 backdrop-blur-2xl">
@@ -62,17 +122,35 @@ export function TopNav() {
               );
             })}
 
-            <Link
-              href="/admin"
-              className={cx(
-                "ml-2 rounded-full px-4 py-2 text-sm font-medium transition",
-                isActive(pathname, "/admin")
-                  ? "border border-white/10 bg-white/[0.12] text-stone-50"
-                  : "border border-white/10 bg-white/[0.06] text-stone-50 hover:bg-white/[0.10]"
-              )}
-            >
-              Admin
-            </Link>
+            {profile?.is_admin ? (
+              <Link
+                href="/admin"
+                className={cx(
+                  "ml-2 rounded-full px-4 py-2 text-sm font-medium transition",
+                  isActive(pathname, "/admin")
+                    ? "border border-white/10 bg-white/[0.12] text-stone-50"
+                    : "border border-white/10 bg-white/[0.06] text-stone-50 hover:bg-white/[0.10]"
+                )}
+              >
+                Admin
+              </Link>
+            ) : null}
+
+            {email ? (
+              <button
+                onClick={handleSignOut}
+                className="ml-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-stone-50 hover:bg-white/[0.08]"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="ml-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-medium text-stone-50 hover:bg-white/[0.10]"
+              >
+                Sign in
+              </Link>
+            )}
           </nav>
         </div>
 
@@ -96,17 +174,35 @@ export function TopNav() {
             );
           })}
 
-          <Link
-            href="/admin"
-            className={cx(
-              "shrink-0 rounded-full border border-white/10 px-4 py-2 text-sm font-medium",
-              isActive(pathname, "/admin")
-                ? "bg-white/[0.12] text-stone-50"
-                : "bg-white/[0.08] text-stone-50"
-            )}
-          >
-            Admin
-          </Link>
+          {profile?.is_admin ? (
+            <Link
+              href="/admin"
+              className={cx(
+                "shrink-0 rounded-full border border-white/10 px-4 py-2 text-sm font-medium",
+                isActive(pathname, "/admin")
+                  ? "bg-white/[0.12] text-stone-50"
+                  : "bg-white/[0.08] text-stone-50"
+              )}
+            >
+              Admin
+            </Link>
+          ) : null}
+
+          {email ? (
+            <button
+              onClick={handleSignOut}
+              className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-medium text-stone-50"
+            >
+              Sign out
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-medium text-stone-50"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>
