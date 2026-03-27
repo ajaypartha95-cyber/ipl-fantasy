@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/my-team";
   const blocked = searchParams.get("blocked") === "1";
@@ -140,5 +140,23 @@ export default function LoginPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="sp-page">
+          <div className="sp-container py-12">
+            <section className="mx-auto max-w-2xl sp-hero p-8 lg:p-10">
+              <div className="text-stone-300">Loading sign-in...</div>
+            </section>
+          </div>
+        </main>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }
