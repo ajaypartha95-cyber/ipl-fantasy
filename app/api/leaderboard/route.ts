@@ -25,10 +25,31 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rankedData = data.map((row: any, index: number) => ({
+  const rankedData = (data ?? []).map((row: any, index: number) => ({
     ...row,
     rank: index + 1,
   }));
 
-  return NextResponse.json({ data: rankedData });
+  const { data: matches, error: matchesError } = await supabase
+    .from("matches")
+    .select("id,status")
+    .eq("season_id", 1);
+
+  if (matchesError) {
+    return NextResponse.json({ error: matchesError.message }, { status: 500 });
+  }
+
+  const matchesScored = (matches ?? []).filter(
+    (match: any) => match.status === "completed"
+  ).length;
+
+  const totalMatches = (matches ?? []).length;
+
+  return NextResponse.json({
+    data: rankedData,
+    summary: {
+      matches_scored: matchesScored,
+      total_matches: totalMatches,
+    },
+  });
 }

@@ -23,7 +23,8 @@ export async function GET(
         match_number,
         team_1,
         team_2,
-        match_date
+        match_date,
+        status
       )
     `)
     .eq("fantasy_team_id", teamId)

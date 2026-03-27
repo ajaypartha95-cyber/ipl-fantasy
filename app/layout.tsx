@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
+import { TopNav } from "@/components/premium/top-nav";
 
 export const metadata: Metadata = {
-  title: "IPL Fantasy App",
-  description: "Private IPL 2026 fantasy league",
+  title: "Silly Point | IPL Fantasy",
+  description: "Silly Point — Every over counts.",
 };
 
 export default function RootLayout({
@@ -14,43 +14,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-black text-white">
-        <header className="border-b border-zinc-800 bg-black/95 sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold">
-              IPL Fantasy
-            </Link>
+      <body className="sp-app-bg text-[#F5F7FA]">
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(61,220,151,0.10),transparent_24%),radial-gradient(circle_at_top_right,rgba(214,179,106,0.08),transparent_22%),linear-gradient(180deg,#05070B_0%,#070B10_100%)]" />
+          <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:36px_36px]" />
+          <div className="absolute -left-24 top-20 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-amber-200/10 blur-3xl" />
+        </div>
 
-            <nav className="flex items-center gap-6 text-sm text-gray-300">
-              <Link href="/" className="hover:text-white transition">
-                Home
-              </Link>
-              <Link href="/league" className="hover:text-white transition">
-                League
-              </Link>
-              <Link href="/leaderboard" className="hover:text-white transition">
-                Leaderboard
-              </Link>
-              <Link href="/compare" className="hover:text-white transition">
-                Compare
-              </Link>
-              <Link href="/my-team" className="hover:text-white transition">
-                My Team
-              </Link>
-              <Link href="/matches" className="hover:text-white transition">
-                Matches
-              </Link>
-              <Link href="/players" className="hover:text-white transition">
-                Players
-              </Link>
-              <Link href="/admin" className="hover:text-white transition">
-                Admin
-              </Link>
-            </nav>
-          </div>
-        </header>
+        <TopNav />
 
-        <div>{children}</div>
+        <div className="relative overflow-x-hidden">{children}</div>
       </body>
     </html>
   );

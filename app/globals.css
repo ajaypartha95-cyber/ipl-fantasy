@@ -1,26 +1,200 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --sp-bg: #05070b;
+  --sp-panel: rgba(255, 255, 255, 0.035);
+  --sp-panel-strong: rgba(255, 255, 255, 0.05);
+  --sp-border: rgba(255, 255, 255, 0.10);
+  --sp-text: #f5f7fa;
+  --sp-muted: #a8b3c2;
+  --sp-muted-2: #778396;
+  --sp-emerald: #7fe3ae;
+  --sp-gold: #e6c98b;
+  --sp-cyan: #b7f3ff;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: var(--sp-bg);
+  color: var(--sp-text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.sp-app-bg {
+  background:
+    radial-gradient(circle at top left, rgba(61, 220, 151, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(214, 179, 106, 0.06), transparent 22%),
+    linear-gradient(180deg, #05070b 0%, #070b10 100%);
+}
+
+.sp-page {
+  min-height: 100vh;
+  color: var(--sp-text);
+}
+
+.sp-container {
+  margin: 0 auto;
+  max-width: 80rem;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.sp-hero {
+  overflow: hidden;
+  border-radius: 2rem;
+  border: 1px solid var(--sp-border);
+  background:
+    radial-gradient(circle at top left, rgba(61, 220, 151, 0.14), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(214, 179, 106, 0.14), transparent 30%),
+    linear-gradient(180deg, #0b0f14 0%, #090d12 100%);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.45);
+}
+
+.sp-panel {
+  border-radius: 1.75rem;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-panel);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
+}
+
+.sp-panel-strong {
+  border-radius: 1.75rem;
+  border: 1px solid var(--sp-border);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.025)
+  );
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
+}
+
+.sp-card {
+  border-radius: 1.5rem;
+  border: 1px solid var(--sp-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sp-muted {
+  color: var(--sp-muted);
+}
+
+.sp-muted-2 {
+  color: var(--sp-muted-2);
+}
+
+.sp-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+  color: rgba(134, 239, 172, 0.8);
+}
+
+.sp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sp-border);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.sp-pill-success {
+  border-color: rgba(110, 231, 183, 0.2);
+  background: rgba(52, 211, 153, 0.1);
+  color: #bbf7d0;
+}
+
+.sp-pill-gold {
+  border-color: rgba(252, 211, 77, 0.18);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fef3c7;
+}
+
+.sp-pill-info {
+  border-color: rgba(103, 232, 249, 0.18);
+  background: rgba(34, 211, 238, 0.1);
+  color: #cffafe;
+}
+
+.sp-pill-default {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #d6d3d1;
+}
+
+.sp-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #4ade80, #67e8f9);
+  padding: 0.8rem 1.25rem;
+  color: #020617;
+  font-size: 0.925rem;
+  font-weight: 600;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.sp-button-primary:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+.sp-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid var(--sp-border);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.8rem 1.25rem;
+  color: #f5f7fa;
+  font-size: 0.925rem;
+  font-weight: 500;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.sp-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+.sp-metric {
+  border-radius: 1.5rem;
+  border: 1px solid var(--sp-border);
+  padding: 1.25rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.045),
+    rgba(255, 255, 255, 0.02)
+  );
 }

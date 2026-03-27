@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +20,14 @@ type TeamSetupData = {
   }>;
 };
 
+function getRoleTone(role?: string) {
+  const value = (role || "").toLowerCase();
+  if (value.includes("all")) return "sp-pill-gold";
+  if (value.includes("bowl")) return "sp-pill-info";
+  if (value.includes("bat")) return "sp-pill-success";
+  return "sp-pill-default";
+}
+
 export default function TeamSetupPage({
   params,
 }: {
@@ -34,6 +42,7 @@ export default function TeamSetupPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string>("");
+
   const router = useRouter();
 
   useEffect(() => {
@@ -63,9 +72,13 @@ export default function TeamSetupPage({
       setTeamName(data.team.team_name);
       setOwnerName(profile?.display_name || "");
       setPlayers(normalizedPlayers);
-      setCaptainId(data.team.captain_player_id ? String(data.team.captain_player_id) : "");
+      setCaptainId(
+        data.team.captain_player_id ? String(data.team.captain_player_id) : ""
+      );
       setViceCaptainId(
-        data.team.vice_captain_player_id ? String(data.team.vice_captain_player_id) : ""
+        data.team.vice_captain_player_id
+          ? String(data.team.vice_captain_player_id)
+          : ""
       );
       setLoading(false);
     }
@@ -73,12 +86,21 @@ export default function TeamSetupPage({
     loadData();
   }, [params]);
 
-  async function handleSave() {
-    setMessage("Captain and vice-captain saved successfully.");
+  const captain = useMemo(
+    () => players.find((p) => String(p.id) === captainId),
+    [players, captainId]
+  );
 
-    setTimeout(() => {
-  router.push(`/team/${teamId}`);
-}, 800);
+  const viceCaptain = useMemo(
+    () => players.find((p) => String(p.id) === viceCaptainId),
+    [players, viceCaptainId]
+  );
+
+  const isValidSelection =
+    !!captainId && !!viceCaptainId && captainId !== viceCaptainId;
+
+  async function handleSave() {
+    setMessage("");
 
     if (!captainId || !viceCaptainId) {
       setMessage("Please select both captain and vice-captain.");
@@ -113,7 +135,11 @@ export default function TeamSetupPage({
       }
 
       setMessage("Captain and vice-captain saved successfully.");
-    } catch (error) {
+
+      setTimeout(() => {
+        router.push(`/team/${teamId}`);
+      }, 800);
+    } catch {
       setMessage("Something went wrong while saving.");
     } finally {
       setSaving(false);
@@ -122,47 +148,177 @@ export default function TeamSetupPage({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black text-white p-8">
-        <div className="max-w-5xl mx-auto">
-          <p>Loading...</p>
+      <main className="sp-page">
+        <div className="sp-container py-10">
+          <div className="sp-panel p-8">
+            <p className="text-stone-300">Loading team setup...</p>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-8">
-  <div>
-    <h1 className="text-4xl font-bold mb-2">Set Captain & Vice-Captain</h1>
-    <p className="text-gray-400">
-      {teamName} • Owner: {ownerName}
-    </p>
-  </div>
-
-  <Link
-    href={`/team/${teamId}`}
-    className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-zinc-500"
-  >
-    Back to Team
-  </Link>
-</div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 mb-8">
-          <p className="text-lg mb-4">
-            Choose captain and vice-captain from the selected 11 players.
-          </p>
-
-          <div className="grid gap-6 md:grid-cols-2">
+    <main className="sp-page">
+      <div className="sp-container py-8 md:py-10">
+        <section className="sp-hero p-8 lg:p-10">
+          <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
-              <label className="block text-sm text-gray-400 mb-2">
+              <div className="flex flex-wrap gap-3">
+                <span className="sp-pill sp-pill-gold">Captaincy setup</span>
+                <span className="sp-pill sp-pill-info">Fantasy leadership</span>
+              </div>
+
+              <h1 className="mt-5 text-4xl font-semibold leading-[1.04] tracking-tight text-stone-50 md:text-5xl">
+                Set the captaincy
+                <span className="block text-amber-100">for {teamName}.</span>
+              </h1>
+
+              <p className="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+                Choose your captain and vice-captain from the selected XI.
+                These two choices define the core upside of your fantasy squad.
+              </p>
+
+              <div className="mt-8 grid gap-4 md:grid-cols-3">
+                <div className="sp-metric bg-[linear-gradient(180deg,rgba(110,231,183,0.15),rgba(52,211,153,0.05))] text-emerald-100">
+                  <div className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Squad size
+                  </div>
+                  <div className="mt-5 text-3xl font-semibold tracking-tight">
+                    {players.length}
+                  </div>
+                  <div className="mt-2 text-sm text-stone-300">
+                    Available fantasy players
+                  </div>
+                </div>
+
+                <div className="sp-metric bg-[linear-gradient(180deg,rgba(103,232,249,0.15),rgba(34,211,238,0.05))] text-cyan-100">
+                  <div className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Captain
+                  </div>
+                  <div className="mt-5 text-2xl font-semibold tracking-tight">
+                    {captain?.name || "—"}
+                  </div>
+                  <div className="mt-2 text-sm text-stone-300">
+                    Primary multiplier pick
+                  </div>
+                </div>
+
+                <div className="sp-metric bg-[linear-gradient(180deg,rgba(252,211,77,0.15),rgba(251,191,36,0.05))] text-amber-100">
+                  <div className="text-xs uppercase tracking-[0.22em] text-stone-400">
+                    Vice-captain
+                  </div>
+                  <div className="mt-5 text-2xl font-semibold tracking-tight">
+                    {viceCaptain?.name || "—"}
+                  </div>
+                  <div className="mt-2 text-sm text-stone-300">
+                    Secondary upside pick
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sp-panel p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.24em] text-stone-500">
+                    Team overview
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold">Leadership preview</div>
+                </div>
+                <span
+                  className={`sp-pill ${
+                    isValidSelection ? "sp-pill-success" : "sp-pill-gold"
+                  }`}
+                >
+                  {isValidSelection ? "Ready" : "Incomplete"}
+                </span>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                    Team name
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-stone-50">
+                    {teamName}
+                  </div>
+                  <div className="mt-2 text-sm text-stone-400">
+                    Managed by {ownerName}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                    Captain
+                  </div>
+                  <div className="mt-2 text-xl font-semibold text-stone-50">
+                    {captain?.name || "Not selected"}
+                  </div>
+                  <div className="mt-1 text-sm text-stone-400">
+                    {captain?.ipl_team || "Choose a player"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                    Vice-captain
+                  </div>
+                  <div className="mt-2 text-xl font-semibold text-stone-50">
+                    {viceCaptain?.name || "Not selected"}
+                  </div>
+                  <div className="mt-1 text-sm text-stone-400">
+                    {viceCaptain?.ipl_team || "Choose a player"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href={`/team/${teamId}`}
+                  className="sp-button-secondary"
+                >
+                  Back to Team
+                </Link>
+
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="sp-button-primary disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Save Captaincy"}
+                </button>
+              </div>
+
+              {message ? (
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-stone-300">
+                  {message}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-6">
+            <div className="sp-eyebrow mb-2">Selection controls</div>
+            <h2 className="text-3xl font-semibold text-stone-50">
+              Pick your captain and vice-captain
+            </h2>
+            <p className="mt-2 max-w-2xl text-stone-400">
+              Select two different players from your squad to complete the setup.
+            </p>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="sp-panel p-6">
+              <label className="mb-3 block text-sm uppercase tracking-[0.18em] text-stone-500">
                 Captain
               </label>
               <select
                 value={captainId}
                 onChange={(e) => setCaptainId(e.target.value)}
-                className="w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-white"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-white outline-none transition focus:border-emerald-400/40"
               >
                 <option value="">Select captain</option>
                 {players.map((player) => (
@@ -173,14 +329,14 @@ export default function TeamSetupPage({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">
-                Vice-Captain
+            <div className="sp-panel p-6">
+              <label className="mb-3 block text-sm uppercase tracking-[0.18em] text-stone-500">
+                Vice-captain
               </label>
               <select
                 value={viceCaptainId}
                 onChange={(e) => setViceCaptainId(e.target.value)}
-                className="w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-white"
+                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-white outline-none transition focus:border-cyan-400/40"
               >
                 <option value="">Select vice-captain</option>
                 {players.map((player) => (
@@ -191,62 +347,59 @@ export default function TeamSetupPage({
               </select>
             </div>
           </div>
+        </section>
 
-          <div className="mt-6 rounded-xl border border-zinc-800 bg-black p-4">
-            <p className="text-sm text-gray-400 mb-2">Current selection preview</p>
-            <p>
-              Captain:{" "}
-              <span className="font-medium">
-                {players.find((p) => String(p.id) === captainId)?.name || "Not selected"}
-              </span>
-            </p>
-            <p>
-              Vice-Captain:{" "}
-              <span className="font-medium">
-                {players.find((p) => String(p.id) === viceCaptainId)?.name || "Not selected"}
-              </span>
+        <section className="mt-8">
+          <div className="mb-6">
+            <div className="sp-eyebrow mb-2">Squad reference</div>
+            <h2 className="text-3xl font-semibold text-stone-50">
+              Available players
+            </h2>
+            <p className="mt-2 max-w-2xl text-stone-400">
+              Review your selected players before locking in the leadership pair.
             </p>
           </div>
 
-          <div className="mt-6 flex items-center gap-4">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-lg bg-white text-black px-5 py-3 font-medium hover:bg-gray-200 disabled:opacity-60"
-            >
-              {saving ? "Saving..." : "Save Captain & Vice-Captain"}
-            </button>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {players.map((player) => {
+              const isCaptain = String(player.id) === captainId;
+              const isViceCaptain = String(player.id) === viceCaptainId;
 
-            {message && (
-              <p className="text-sm text-gray-300">{message}</p>
-            )}
+              return (
+                <div
+                  key={player.id}
+                  className="sp-panel p-5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xl font-semibold text-stone-50">
+                        {player.name}
+                      </div>
+                      <div className="mt-1 text-sm text-stone-400">
+                        {player.ipl_team}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {isCaptain ? (
+                        <span className="sp-pill sp-pill-gold">Captain</span>
+                      ) : null}
+                      {isViceCaptain ? (
+                        <span className="sp-pill sp-pill-info">Vice-Captain</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className={`sp-pill ${getRoleTone(player.role)}`}>
+                      {player.role}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-          <h2 className="text-2xl font-semibold mb-4">Available Players</h2>
-
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-zinc-900">
-                <tr>
-                  <th className="p-4 border-b border-zinc-700">Name</th>
-                  <th className="p-4 border-b border-zinc-700">Role</th>
-                  <th className="p-4 border-b border-zinc-700">IPL Team</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map((player) => (
-                  <tr key={player.id} className="odd:bg-zinc-950 even:bg-black">
-                    <td className="p-4 border-b border-zinc-800">{player.name}</td>
-                    <td className="p-4 border-b border-zinc-800">{player.role}</td>
-                    <td className="p-4 border-b border-zinc-800">{player.ipl_team}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        </section>
       </div>
     </main>
   );

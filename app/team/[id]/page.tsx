@@ -1,4 +1,10 @@
+import Link from "next/link";
 import { getBaseUrl } from "@/src/lib/base-url";
+import { PageShell } from "@/components/premium/page-shell";
+import { Panel } from "@/components/premium/panel";
+import { Pill } from "@/components/premium/pill";
+import { MetricCard } from "@/components/premium/metric-card";
+import { SectionTitle } from "@/components/premium/section-title";
 
 async function getTeam(id: string) {
   const res = await fetch(`${getBaseUrl()}/api/team/${id}`, {
@@ -34,6 +40,15 @@ function formatMatchDate(dateString: string) {
   });
 }
 
+function getRoleTone(role?: string): "gold" | "info" | "success" | "default" {
+  const value = (role || "").toLowerCase();
+
+  if (value.includes("all")) return "gold";
+  if (value.includes("bowl")) return "info";
+  if (value.includes("bat")) return "success";
+  return "default";
+}
+
 export default async function TeamDetailsPage({
   params,
 }: {
@@ -52,114 +67,276 @@ export default async function TeamDetailsPage({
   const hasCaptain = !!captainId;
   const hasViceCaptain = !!viceCaptainId;
 
-  return (
-    <main className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">{team.team_name}</h1>
-        <p className="text-gray-400 mb-4">
-          Owner: {profile?.display_name}
-        </p>
+  const totalBasePoints = matchHistory.reduce(
+    (sum: number, row: any) => sum + (row.base_points ?? 0),
+    0
+  );
 
-        {(!hasCaptain || !hasViceCaptain) && (
-          <div className="mb-6 rounded-xl border border-yellow-700 bg-yellow-950/40 p-4 text-yellow-200">
-            <p className="mb-3">
-              Captain and vice-captain have not been selected yet for this team.
+  const totalFantasyPoints = matchHistory.reduce(
+    (sum: number, row: any) => sum + (row.total_points ?? 0),
+    0
+  );
+
+  const captainPlayer = players
+    .map((item: any) => (Array.isArray(item.players) ? item.players[0] : item.players))
+    .find((player: any) => player?.id === captainId);
+
+  const viceCaptainPlayer = players
+    .map((item: any) => (Array.isArray(item.players) ? item.players[0] : item.players))
+    .find((player: any) => player?.id === viceCaptainId);
+
+  return (
+    <PageShell>
+      <section className="sp-hero p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <div className="flex flex-wrap gap-3">
+              <Pill tone="gold">Silly Point Squad</Pill>
+              <Pill tone="info">Every over counts</Pill>
+            </div>
+
+            <h1 className="mt-5 text-4xl font-semibold leading-[1.04] tracking-tight text-stone-50 md:text-5xl">
+              {team.team_name}
+            </h1>
+
+            <p className="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+              Managed by <span className="font-medium text-stone-50">{profile?.display_name}</span>. 
+              View your selected XI, leadership choices, and full match-by-match fantasy ledger.
             </p>
 
-            <a
-              href={`/team/${team.id}/setup`}
-              className="inline-block rounded-lg bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200"
-            >
-              Set Captain & Vice-Captain
-            </a>
-          </div>
-        )}
-
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-            <h2 className="text-2xl font-semibold mb-4">Selected Players</h2>
-
-            <div className="overflow-x-auto rounded-xl border border-zinc-800">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-zinc-900">
-                  <tr>
-                    <th className="p-4 border-b border-zinc-700">Name</th>
-                    <th className="p-4 border-b border-zinc-700">Role</th>
-                    <th className="p-4 border-b border-zinc-700">IPL Team</th>
-                    <th className="p-4 border-b border-zinc-700">Tag</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {players.map((item: any) => {
-                    const player = Array.isArray(item.players) ? item.players[0] : item.players;
-                    const isCaptain = player?.id === captainId;
-                    const isViceCaptain = player?.id === viceCaptainId;
-
-                    return (
-                      <tr key={item.id} className="odd:bg-zinc-950 even:bg-black">
-                        <td className="p-4 border-b border-zinc-800">{player?.name}</td>
-                        <td className="p-4 border-b border-zinc-800">{player?.role}</td>
-                        <td className="p-4 border-b border-zinc-800">{player?.ipl_team}</td>
-                        <td className="p-4 border-b border-zinc-800">
-                          {isCaptain ? "Captain" : isViceCaptain ? "Vice-Captain" : "-"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-8 grid gap-4 md:grid-cols-4">
+              <MetricCard
+                label="Squad size"
+                value={players.length}
+                subtitle="Selected fantasy players"
+                accent="emerald"
+              />
+              <MetricCard
+                label="Scored matches"
+                value={matchHistory.length}
+                subtitle="Fixtures with fantasy totals"
+                accent="cyan"
+              />
+              <MetricCard
+                label="Base points"
+                value={totalBasePoints}
+                subtitle="Before captaincy multipliers"
+                accent="neutral"
+              />
+              <MetricCard
+                label="Fantasy points"
+                value={totalFantasyPoints}
+                subtitle="Total with C and VC impact"
+                accent="gold"
+              />
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-            <h2 className="text-2xl font-semibold mb-4">Match-wise Points</h2>
-
-            {matchHistory.length === 0 ? (
-              <p className="text-gray-400">No match points available yet.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-zinc-900">
-                    <tr>
-                      <th className="p-4 border-b border-zinc-700">Match</th>
-                      <th className="p-4 border-b border-zinc-700">Fixture</th>
-                      <th className="p-4 border-b border-zinc-700">Date</th>
-                      <th className="p-4 border-b border-zinc-700">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {matchHistory.map((row: any) => {
-                      const match = Array.isArray(row.matches) ? row.matches[0] : row.matches;
-
-                      return (
-                        <tr key={row.id} className="odd:bg-zinc-950 even:bg-black">
-                          <td className="p-4 border-b border-zinc-800">
-                            #{match?.match_number}
-                          </td>
-                          <td className="p-4 border-b border-zinc-800">
-                            {match?.team_1} vs {match?.team_2}
-                          </td>
-                          <td className="p-4 border-b border-zinc-800">
-                            {formatMatchDate(match?.match_date)}
-                          </td>
-                          <td className="p-4 border-b border-zinc-800">
-  <a
-    href={`/team/${team.id}/match/${match.id}`}
-    className="inline-block rounded-lg bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200"
-  >
-    {row.total_points} pts
-  </a>
-</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+          <Panel className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.24em] text-stone-500">
+                  Leadership core
+                </div>
+                <div className="mt-2 text-2xl font-semibold">Captaincy spine</div>
               </div>
-            )}
-          </div>
+              <Pill tone={hasCaptain && hasViceCaptain ? "success" : "gold"}>
+                {hasCaptain && hasViceCaptain ? "Ready" : "Needs setup"}
+              </Pill>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                  Captain
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-stone-50">
+                  {captainPlayer?.name || "Not selected"}
+                </div>
+                <div className="mt-1 text-sm text-stone-400">
+                  {captainPlayer?.ipl_team || "Choose a captain"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
+                  Vice-captain
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-stone-50">
+                  {viceCaptainPlayer?.name || "Not selected"}
+                </div>
+                <div className="mt-1 text-sm text-stone-400">
+                  {viceCaptainPlayer?.ipl_team || "Choose a vice-captain"}
+                </div>
+              </div>
+
+              {(!hasCaptain || !hasViceCaptain) && (
+                <div className="rounded-2xl border border-amber-300/15 bg-amber-400/10 p-4">
+                  <div className="text-sm text-amber-100">
+                    Captain and vice-captain have not been fully selected yet.
+                  </div>
+                  <div className="mt-4">
+                    <Link
+                      href={`/team/${team.id}/setup`}
+                      className="sp-button-primary"
+                    >
+                      Set Captain & Vice-Captain
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Panel>
         </div>
-      </div>
-    </main>
+      </section>
+
+      <section className="mt-8">
+        <SectionTitle
+          eyebrow="Squad sheet"
+          title="Selected players"
+          subtitle="Your current fantasy squad, player roles, IPL teams, and leadership tags."
+        />
+
+        <Panel className="mt-6 overflow-hidden">
+          <div className="hidden border-b border-white/10 bg-white/[0.03] px-5 py-4 text-xs uppercase tracking-[0.18em] text-stone-500 md:grid md:grid-cols-[1.2fr_180px_1fr_180px]">
+            <div>Player</div>
+            <div>Role</div>
+            <div>IPL team</div>
+            <div>Tag</div>
+          </div>
+
+          <div>
+            {players.map((item: any) => {
+              const player = Array.isArray(item.players) ? item.players[0] : item.players;
+              const isCaptain = player?.id === captainId;
+              const isViceCaptain = player?.id === viceCaptainId;
+
+              return (
+                <div
+                  key={item.id}
+                  className="grid items-center gap-4 border-t border-white/10 px-5 py-4 first:border-t-0 md:grid-cols-[1.2fr_180px_1fr_180px]"
+                >
+                  <div>
+                    <div className="font-medium text-stone-50">{player?.name}</div>
+                  </div>
+
+                  <div>
+                    <Pill tone={getRoleTone(player?.role)}>{player?.role}</Pill>
+                  </div>
+
+                  <div className="text-stone-300">{player?.ipl_team}</div>
+
+                  <div>
+                    {isCaptain ? (
+                      <Pill tone="gold">Captain</Pill>
+                    ) : isViceCaptain ? (
+                      <Pill tone="info">Vice-Captain</Pill>
+                    ) : (
+                      <Pill tone="default">Squad</Pill>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      </section>
+
+      <section className="mt-8">
+        <SectionTitle
+          eyebrow="Match ledger"
+          title="Fantasy scoring history"
+          subtitle="Base scoring, captaincy bonuses, and final fantasy totals by match."
+        />
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="Scored matches"
+            value={matchHistory.length}
+            subtitle="Fixtures already completed"
+            accent="emerald"
+          />
+          <MetricCard
+            label="Total base points"
+            value={totalBasePoints}
+            subtitle="Without C and VC multipliers"
+            accent="cyan"
+          />
+          <MetricCard
+            label="Total fantasy points"
+            value={totalFantasyPoints}
+            subtitle="Including leadership bonuses"
+            accent="gold"
+          />
+        </div>
+
+        {matchHistory.length === 0 ? (
+          <Panel className="mt-6 p-6 text-stone-400">
+            No match points available yet.
+          </Panel>
+        ) : (
+          <Panel className="mt-6 overflow-hidden">
+            <div className="hidden border-b border-white/10 bg-white/[0.03] px-5 py-4 text-xs uppercase tracking-[0.18em] text-stone-500 md:grid md:grid-cols-[90px_1.2fr_220px_100px_100px_100px_120px_160px]">
+              <div>Match</div>
+              <div>Fixture</div>
+              <div>Date</div>
+              <div>Base</div>
+              <div>C Bonus</div>
+              <div>VC Bonus</div>
+              <div>Total</div>
+              <div>Action</div>
+            </div>
+
+            <div>
+              {matchHistory.map((row: any) => {
+                const match = Array.isArray(row.matches) ? row.matches[0] : row.matches;
+
+                return (
+                  <div
+                    key={row.id}
+                    className="grid items-center gap-4 border-t border-white/10 px-5 py-4 first:border-t-0 md:grid-cols-[90px_1.2fr_220px_100px_100px_100px_120px_160px]"
+                  >
+                    <div className="font-medium text-stone-50">#{match?.match_number}</div>
+
+                    <div className="text-stone-300">
+                      {match?.team_1} vs {match?.team_2}
+                    </div>
+
+                    <div className="text-stone-300">
+                      {formatMatchDate(match?.match_date)}
+                    </div>
+
+                    <div className="font-medium text-stone-50">
+                      {row.base_points ?? 0}
+                    </div>
+
+                    <div className="font-medium text-amber-100">
+                      {row.captain_bonus_points ?? 0}
+                    </div>
+
+                    <div className="font-medium text-cyan-100">
+                      {row.vice_captain_bonus_points ?? 0}
+                    </div>
+
+                    <div className="text-lg font-semibold text-stone-50">
+                      {row.total_points ?? 0}
+                    </div>
+
+                    <div>
+                      <Link
+                        href={`/team/${team.id}/match/${match.id}`}
+                        className="sp-button-secondary"
+                      >
+                        View Breakdown
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        )}
+      </section>
+    </PageShell>
   );
 }

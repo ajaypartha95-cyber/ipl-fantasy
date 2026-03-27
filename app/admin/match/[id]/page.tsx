@@ -1,12 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calculateFantasyPoints } from "@/src/lib/fantasy-scoring";
 import {
   validatePlayerScoreRow,
   parseCricketOvers,
 } from "@/src/lib/fantasy-validation";
+import { SegmentedControl } from "@/components/premium/segmented-control";
+import { AdminScoreHeader } from "@/components/premium/admin-score-header";
+import { AdminSaveBar } from "@/components/premium/admin-save-bar";
+import { BreakdownModal } from "@/components/premium/breakdown-modal";
+import { ReconciliationCard } from "@/components/premium/reconciliation-card";
+import { ScoringPlayerCard } from "@/components/premium/scoring-player-card";
 
 type MatchPlayer = {
   id: number;
@@ -22,26 +27,28 @@ type MatchData = {
     team_1: string;
     team_2: string;
     match_date: string;
+    status?: string;
   };
   players: MatchPlayer[];
   savedStats: {
-  player_id: number;
-  runs: number;
-  fours: number;
-  sixes: number;
-  balls_faced: number;
-  wickets: number;
-  maiden_overs: number;
-  catches: number;
-  stumpings: number;
-  run_outs: number;
-  is_out: boolean;
-  dismissal_type: string | null;
-  dot_balls: number;
-  bowled_or_lbw_wickets: number;
-  overs_bowled: number;
-  runs_conceded: number;
-}[];
+    player_id: number;
+    runs: number;
+    fours: number;
+    sixes: number;
+    balls_faced: number;
+    wickets: number;
+    maiden_overs: number;
+    catches: number;
+    stumpings: number;
+    run_outs: number;
+    is_out: boolean;
+    dismissal_type: string | null;
+    dot_balls: number;
+    bowled_or_lbw_wickets: number;
+    overs_bowled: number;
+    runs_conceded: number;
+    in_starting_xi?: boolean;
+  }[];
 };
 
 type PlayerScoreInput = {
@@ -63,21 +70,47 @@ type PlayerScoreInput = {
   run_outs: number;
 };
 
+type TeamFilter = "team1" | "team2" | "all";
+type SquadView = "xi" | "full";
+type RowFilter = "all" | "edited" | "invalid";
+
+const EMPTY_ROW: PlayerScoreInput = {
+  in_starting_xi: true,
+  runs: 0,
+  fours: 0,
+  sixes: 0,
+  balls_faced: 0,
+  is_out: false,
+  dismissal_type: "",
+  dot_balls: 0,
+  wickets: 0,
+  bowled_or_lbw_wickets: 0,
+  maiden_overs: 0,
+  overs_bowled: 0,
+  runs_conceded: 0,
+  catches: 0,
+  stumpings: 0,
+  run_outs: 0,
+};
+
 export default function AdminMatchPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [matchId, setMatchId] = useState<string>("");
+  const [matchId, setMatchId] = useState("");
   const [match, setMatch] = useState<MatchData["match"] | null>(null);
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [scores, setScores] = useState<Record<number, PlayerScoreInput>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [teamFilter, setTeamFilter] = useState<TeamFilter>("team1");
+  const [squadView, setSquadView] = useState<SquadView>("xi");
+  const [rowFilter, setRowFilter] = useState<RowFilter>("all");
+  const [expandedPlayerIds, setExpandedPlayerIds] = useState<number[]>([]);
   const [selectedBreakdownPlayerId, setSelectedBreakdownPlayerId] = useState<number | null>(null);
-  const [rowFilter, setRowFilter] = useState<"all" | "edited" | "invalid">("all");
 
   useEffect(() => {
     async function loadData() {
@@ -107,23 +140,23 @@ export default function AdminMatchPage({
         const saved = savedStatsMap.get(player.id);
 
         initialScores[player.id] = {
-  in_starting_xi: true,
-  runs: saved?.runs ?? 0,
-  fours: saved?.fours ?? 0,
-  sixes: saved?.sixes ?? 0,
-  balls_faced: saved?.balls_faced ?? 0,
-  is_out: saved?.is_out ?? false,
-  dismissal_type: saved?.dismissal_type ?? "",
-  dot_balls: saved?.dot_balls ?? 0,
-  wickets: saved?.wickets ?? 0,
-  bowled_or_lbw_wickets: saved?.bowled_or_lbw_wickets ?? 0,
-  maiden_overs: saved?.maiden_overs ?? 0,
-  overs_bowled: saved?.overs_bowled ?? 0,
-  runs_conceded: saved?.runs_conceded ?? 0,
-  catches: saved?.catches ?? 0,
-  stumpings: saved?.stumpings ?? 0,
-  run_outs: saved?.run_outs ?? 0,
-};
+          in_starting_xi: saved?.in_starting_xi ?? true,
+          runs: saved?.runs ?? 0,
+          fours: saved?.fours ?? 0,
+          sixes: saved?.sixes ?? 0,
+          balls_faced: saved?.balls_faced ?? 0,
+          is_out: saved?.is_out ?? false,
+          dismissal_type: saved?.dismissal_type ?? "",
+          dot_balls: saved?.dot_balls ?? 0,
+          wickets: saved?.wickets ?? 0,
+          bowled_or_lbw_wickets: saved?.bowled_or_lbw_wickets ?? 0,
+          maiden_overs: saved?.maiden_overs ?? 0,
+          overs_bowled: saved?.overs_bowled ?? 0,
+          runs_conceded: saved?.runs_conceded ?? 0,
+          catches: saved?.catches ?? 0,
+          stumpings: saved?.stumpings ?? 0,
+          run_outs: saved?.run_outs ?? 0,
+        };
       });
 
       setScores(initialScores);
@@ -157,364 +190,459 @@ export default function AdminMatchPage({
       },
     }));
   }
-function updateBoolean(playerId: number, field: keyof PlayerScoreInput, value: boolean) {
-  setScores((prev) => ({
-    ...prev,
-    [playerId]: {
-      ...prev[playerId],
-      [field]: value,
-    },
-  }));
-}
 
-function updateText(playerId: number, field: keyof PlayerScoreInput, value: string) {
-  setScores((prev) => ({
-    ...prev,
-    [playerId]: {
-      ...prev[playerId],
-      [field]: value,
-    },
-  }));
-}
-
-  function getPreviewPoints(playerId: number) {
-  const row = scores[playerId];
-  if (!row) return 0;
-
-  return calculateFantasyPoints(row).total_points;
-}
-
-function getScoreBreakdown(playerId: number) {
-  const row = scores[playerId];
-  if (!row) return null;
-
-  return calculateFantasyPoints(row);
-}
-
-function getRowValidation(playerId: number) {
-  const row = scores[playerId];
-  if (!row) {
-    return { isValid: true, errors: [] };
+  function updateBoolean(
+    playerId: number,
+    field: keyof PlayerScoreInput,
+    value: boolean
+  ) {
+    setScores((prev) => ({
+      ...prev,
+      [playerId]: {
+        ...prev[playerId],
+        [field]: value,
+      },
+    }));
   }
 
-  return validatePlayerScoreRow(row);
-}
+  function updateText(
+    playerId: number,
+    field: keyof PlayerScoreInput,
+    value: string
+  ) {
+    setScores((prev) => ({
+      ...prev,
+      [playerId]: {
+        ...prev[playerId],
+        [field]: value,
+      },
+    }));
+  }
 
-function hasAnyRowErrors() {
-  return players.some((player) => !getRowValidation(player.id).isValid);
-}
+  function getRow(playerId: number) {
+    return scores[playerId] ?? EMPTY_ROW;
+  }
 
-function getTeamOuts(teamName: string) {
-  return players.filter((player) => {
-    if (player.ipl_team !== teamName) return false;
-    const row = scores[player.id];
-    return row?.is_out;
-  }).length;
-}
+  function isEditedRow(playerId: number) {
+    const row = getRow(playerId);
+    return (
+      row.runs > 0 ||
+      row.fours > 0 ||
+      row.sixes > 0 ||
+      row.balls_faced > 0 ||
+      row.is_out ||
+      row.dismissal_type.trim() !== "" ||
+      row.dot_balls > 0 ||
+      row.wickets > 0 ||
+      row.bowled_or_lbw_wickets > 0 ||
+      row.maiden_overs > 0 ||
+      row.overs_bowled > 0 ||
+      row.runs_conceded > 0 ||
+      row.catches > 0 ||
+      row.stumpings > 0 ||
+      row.run_outs > 0 ||
+      !row.in_starting_xi
+    );
+  }
 
-function getBattingDismissalTypeCount(teamName: string, dismissalType: string) {
-  return players.filter((player) => {
-    if (player.ipl_team !== teamName) return false;
-    const row = scores[player.id];
-    if (!row) return false;
-    return row.is_out && row.dismissal_type === dismissalType;
-  }).length;
-}
+  function isMeaningfullyUsedRow(playerId: number) {
+    const row = getRow(playerId);
+    return (
+      row.in_starting_xi ||
+      row.runs > 0 ||
+      row.fours > 0 ||
+      row.sixes > 0 ||
+      row.balls_faced > 0 ||
+      row.is_out ||
+      row.dismissal_type.trim() !== "" ||
+      row.dot_balls > 0 ||
+      row.wickets > 0 ||
+      row.bowled_or_lbw_wickets > 0 ||
+      row.maiden_overs > 0 ||
+      row.overs_bowled > 0 ||
+      row.runs_conceded > 0 ||
+      row.catches > 0 ||
+      row.stumpings > 0 ||
+      row.run_outs > 0
+    );
+  }
 
-function getFieldingDismissalTotals(teamName: string) {
-  const teamPlayers = players.filter((player) => player.ipl_team === teamName);
+  function getRowValidation(playerId: number) {
+    return validatePlayerScoreRow(getRow(playerId));
+  }
 
-  return teamPlayers.reduce(
-    (acc, player) => {
-      const row = scores[player.id];
-      if (!row) return acc;
+  function getPreviewPoints(playerId: number) {
+    return calculateFantasyPoints(getRow(playerId)).total_points;
+  }
 
-      acc.wickets += row.wickets;
-      acc.bowledOrLbw += row.bowled_or_lbw_wickets;
-      acc.catches += row.catches;
-      acc.stumpings += row.stumpings;
-      acc.runOuts += row.run_outs;
-      return acc;
-    },
-    {
-      wickets: 0,
-      bowledOrLbw: 0,
-      catches: 0,
-      stumpings: 0,
-      runOuts: 0,
+  function getScoreBreakdown(playerId: number) {
+    return calculateFantasyPoints(getRow(playerId));
+  }
+
+  function getBattingSummary(playerId: number) {
+    const row = getRow(playerId);
+
+    if (
+      row.runs === 0 &&
+      row.balls_faced === 0 &&
+      row.fours === 0 &&
+      row.sixes === 0 &&
+      !row.is_out
+    ) {
+      return "No batting entry";
     }
-  );
-}
 
-function getDismissalReconciliation(battingTeam: string, fieldingTeam: string) {
-  const outs = getTeamOuts(battingTeam);
-  const fieldingTotals = getFieldingDismissalTotals(fieldingTeam);
+    const parts = [
+      `${row.runs}${row.balls_faced > 0 ? ` (${row.balls_faced})` : ""}`,
+    ];
 
-  return {
-    outs,
-    expectedDismissals: fieldingTotals.wickets + fieldingTotals.runOuts,
-    matches: outs === fieldingTotals.wickets + fieldingTotals.runOuts,
-    fieldingTotals,
-  };
-}
+    if (row.fours > 0) parts.push(`${row.fours}x4`);
+    if (row.sixes > 0) parts.push(`${row.sixes}x6`);
+    if (row.is_out) {
+      parts.push(row.dismissal_type ? `out • ${row.dismissal_type}` : "out");
+    } else if (row.balls_faced > 0 || row.runs > 0) {
+      parts.push("not out");
+    }
 
-function getSubtypeComparison(battingTeam: string, fieldingTeam: string) {
-  const fieldingTotals = getFieldingDismissalTotals(fieldingTeam);
+    return parts.join(" • ");
+  }
 
-  const caughtDismissals = getBattingDismissalTypeCount(battingTeam, "caught");
-  const bowledDismissals = getBattingDismissalTypeCount(battingTeam, "bowled");
-  const lbwDismissals = getBattingDismissalTypeCount(battingTeam, "lbw");
-  const stumpedDismissals = getBattingDismissalTypeCount(battingTeam, "stumped");
-  const runOutDismissals = getBattingDismissalTypeCount(battingTeam, "run_out");
+  function getBowlingSummary(playerId: number) {
+    const row = getRow(playerId);
 
-  return {
-    caught: {
-      batting: caughtDismissals,
-      fielding: fieldingTotals.catches,
-      matches: caughtDismissals === fieldingTotals.catches,
-    },
-    bowledLbw: {
-      batting: bowledDismissals + lbwDismissals,
-      fielding: fieldingTotals.bowledOrLbw,
-      matches: bowledDismissals + lbwDismissals === fieldingTotals.bowledOrLbw,
-    },
-    stumped: {
-      batting: stumpedDismissals,
-      fielding: fieldingTotals.stumpings,
-      matches: stumpedDismissals === fieldingTotals.stumpings,
-    },
-    runOut: {
-      batting: runOutDismissals,
-      fielding: fieldingTotals.runOuts,
-      matches: runOutDismissals === fieldingTotals.runOuts,
-    },
-  };
-}
+    if (
+      row.wickets === 0 &&
+      row.overs_bowled === 0 &&
+      row.runs_conceded === 0 &&
+      row.dot_balls === 0 &&
+      row.maiden_overs === 0
+    ) {
+      return "No bowling entry";
+    }
 
-function renderMiniStatus(matches: boolean) {
-  return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-        matches
-          ? "bg-green-900/40 text-green-300 border border-green-700"
-          : "bg-red-900/40 text-red-300 border border-red-700"
-      }`}
-    >
-      {matches ? "Matched" : "Mismatch"}
-    </span>
-  );
-}
+    const parts: string[] = [];
 
-function getValidRowCount() {
-  return players.filter((player) => getRowValidation(player.id).isValid).length;
-}
+    if (row.wickets > 0) parts.push(`${row.wickets} wkts`);
+    if (row.overs_bowled > 0) parts.push(`${row.overs_bowled} ov`);
+    if (row.runs_conceded > 0 || row.overs_bowled > 0) {
+      parts.push(`${row.runs_conceded} runs`);
+    }
+    if (row.dot_balls > 0) parts.push(`${row.dot_balls} dots`);
+    if (row.maiden_overs > 0) parts.push(`${row.maiden_overs} maiden`);
 
-function getInvalidRowCount() {
-  return players.length - getValidRowCount();
-}
+    return parts.join(" • ");
+  }
 
-function getOverallStatus() {
-  const hasRowErrors = hasAnyRowErrors();
-  const hasReconciliationErrors = hasAnyMatchReconciliationErrors();
+  function getFieldingSummary(playerId: number) {
+    const row = getRow(playerId);
 
-  if (hasRowErrors || hasReconciliationErrors) {
+    if (row.catches === 0 && row.stumpings === 0 && row.run_outs === 0) {
+      return "No fielding entry";
+    }
+
+    const parts: string[] = [];
+    if (row.catches > 0) parts.push(`${row.catches} catch`);
+    if (row.stumpings > 0) parts.push(`${row.stumpings} stumping`);
+    if (row.run_outs > 0) parts.push(`${row.run_outs} run out`);
+
+    return parts.join(" • ");
+  }
+
+  function getCardPriority(playerId: number) {
+    const invalid = !getRowValidation(playerId).isValid;
+    const edited = isEditedRow(playerId);
+
+    if (invalid) return 0;
+    if (edited) return 1;
+    return 2;
+  }
+
+  function toggleExpanded(playerId: number) {
+    setExpandedPlayerIds((prev) =>
+      prev.includes(playerId)
+        ? prev.filter((id) => id !== playerId)
+        : [...prev, playerId]
+    );
+  }
+
+  function getPlayersForSelectedTeam() {
+    if (!match) return players;
+
+    if (teamFilter === "team1") {
+      return players.filter((player) => player.ipl_team === match.team_1);
+    }
+
+    if (teamFilter === "team2") {
+      return players.filter((player) => player.ipl_team === match.team_2);
+    }
+
+    return players;
+  }
+
+  function getScopedPlayers() {
+    const teamPlayers = getPlayersForSelectedTeam();
+    if (squadView === "full") return teamPlayers;
+
+    return teamPlayers.filter((player) => isMeaningfullyUsedRow(player.id));
+  }
+
+  function getVisiblePlayers() {
+    const scopedPlayers = getScopedPlayers();
+
+    if (rowFilter === "all") return scopedPlayers;
+    if (rowFilter === "edited") {
+      return scopedPlayers.filter((player) => isEditedRow(player.id));
+    }
+    return scopedPlayers.filter((player) => !getRowValidation(player.id).isValid);
+  }
+
+  function hasAnyRowErrors() {
+    return players.some((player) => !getRowValidation(player.id).isValid);
+  }
+
+  function getValidRowCount() {
+    return players.filter((player) => getRowValidation(player.id).isValid).length;
+  }
+
+  function getInvalidRowCount() {
+    return players.length - getValidRowCount();
+  }
+
+  function getTeamOuts(teamName: string) {
+    return players.filter((player) => {
+      if (player.ipl_team !== teamName) return false;
+      return getRow(player.id).is_out;
+    }).length;
+  }
+
+  function getBattingDismissalTypeCount(teamName: string, dismissalType: string) {
+    return players.filter((player) => {
+      if (player.ipl_team !== teamName) return false;
+      const row = getRow(player.id);
+      return row.is_out && row.dismissal_type === dismissalType;
+    }).length;
+  }
+
+  function getFieldingDismissalTotals(teamName: string) {
+    const teamPlayers = players.filter((player) => player.ipl_team === teamName);
+
+    return teamPlayers.reduce(
+      (acc, player) => {
+        const row = getRow(player.id);
+        acc.wickets += row.wickets;
+        acc.bowledOrLbw += row.bowled_or_lbw_wickets;
+        acc.catches += row.catches;
+        acc.stumpings += row.stumpings;
+        acc.runOuts += row.run_outs;
+        return acc;
+      },
+      {
+        wickets: 0,
+        bowledOrLbw: 0,
+        catches: 0,
+        stumpings: 0,
+        runOuts: 0,
+      }
+    );
+  }
+
+  function getDismissalReconciliation(battingTeam: string, fieldingTeam: string) {
+    const outs = getTeamOuts(battingTeam);
+    const fieldingTotals = getFieldingDismissalTotals(fieldingTeam);
+
     return {
-      label: "Needs fixes",
-      className: "bg-red-900/40 text-red-300 border border-red-700",
+      outs,
+      expectedDismissals: fieldingTotals.wickets + fieldingTotals.runOuts,
+      matches: outs === fieldingTotals.wickets + fieldingTotals.runOuts,
+      fieldingTotals,
     };
   }
 
-  return {
-    label: "Ready to save",
-    className: "bg-green-900/40 text-green-300 border border-green-700",
-  };
-}
+  function getSubtypeComparison(battingTeam: string, fieldingTeam: string) {
+    const fieldingTotals = getFieldingDismissalTotals(fieldingTeam);
 
-function getMatchReconciliationErrors() {
-  if (!match) return [];
+    const caughtDismissals = getBattingDismissalTypeCount(battingTeam, "caught");
+    const bowledDismissals = getBattingDismissalTypeCount(battingTeam, "bowled");
+    const lbwDismissals = getBattingDismissalTypeCount(battingTeam, "lbw");
+    const stumpedDismissals = getBattingDismissalTypeCount(battingTeam, "stumped");
+    const runOutDismissals = getBattingDismissalTypeCount(battingTeam, "run_out");
 
-  const errors: string[] = [];
-
-  const team1 = getDismissalReconciliation(match.team_1, match.team_2);
-  const team2 = getDismissalReconciliation(match.team_2, match.team_1);
-
-  const team1Subtype = getSubtypeComparison(match.team_1, match.team_2);
-  const team2Subtype = getSubtypeComparison(match.team_2, match.team_1);
-
-  if (!team1.matches) {
-    errors.push(`${match.team_1} outs must equal ${match.team_2} wickets + run outs.`);
+    return {
+      caught: {
+        batting: caughtDismissals,
+        fielding: fieldingTotals.catches,
+        matches: caughtDismissals === fieldingTotals.catches,
+      },
+      bowledLbw: {
+        batting: bowledDismissals + lbwDismissals,
+        fielding: fieldingTotals.bowledOrLbw,
+        matches: bowledDismissals + lbwDismissals === fieldingTotals.bowledOrLbw,
+      },
+      stumped: {
+        batting: stumpedDismissals,
+        fielding: fieldingTotals.stumpings,
+        matches: stumpedDismissals === fieldingTotals.stumpings,
+      },
+      runOut: {
+        batting: runOutDismissals,
+        fielding: fieldingTotals.runOuts,
+        matches: runOutDismissals === fieldingTotals.runOuts,
+      },
+    };
   }
 
-  if (!team2.matches) {
-    errors.push(`${match.team_2} outs must equal ${match.team_1} wickets + run outs.`);
+  function getMatchReconciliationErrors() {
+    if (!match) return [];
+
+    const errors: string[] = [];
+
+    const team1 = getDismissalReconciliation(match.team_1, match.team_2);
+    const team2 = getDismissalReconciliation(match.team_2, match.team_1);
+
+    const team1Subtype = getSubtypeComparison(match.team_1, match.team_2);
+    const team2Subtype = getSubtypeComparison(match.team_2, match.team_1);
+
+    if (!team1.matches) {
+      errors.push(`${match.team_1} outs must equal ${match.team_2} wickets + run outs.`);
+    }
+    if (!team2.matches) {
+      errors.push(`${match.team_2} outs must equal ${match.team_1} wickets + run outs.`);
+    }
+    if (!team1Subtype.caught.matches) {
+      errors.push(`${match.team_1} caught dismissals must equal ${match.team_2} catches.`);
+    }
+    if (!team1Subtype.bowledLbw.matches) {
+      errors.push(
+        `${match.team_1} bowled/LBW dismissals must equal ${match.team_2} bowled/LBW credits.`
+      );
+    }
+    if (!team1Subtype.stumped.matches) {
+      errors.push(`${match.team_1} stumped dismissals must equal ${match.team_2} stumpings.`);
+    }
+    if (!team1Subtype.runOut.matches) {
+      errors.push(`${match.team_1} run-out dismissals must equal ${match.team_2} run outs.`);
+    }
+    if (!team2Subtype.caught.matches) {
+      errors.push(`${match.team_2} caught dismissals must equal ${match.team_1} catches.`);
+    }
+    if (!team2Subtype.bowledLbw.matches) {
+      errors.push(
+        `${match.team_2} bowled/LBW dismissals must equal ${match.team_1} bowled/LBW credits.`
+      );
+    }
+    if (!team2Subtype.stumped.matches) {
+      errors.push(`${match.team_2} stumped dismissals must equal ${match.team_1} stumpings.`);
+    }
+    if (!team2Subtype.runOut.matches) {
+      errors.push(`${match.team_2} run-out dismissals must equal ${match.team_1} run outs.`);
+    }
+
+    return errors;
   }
 
-  if (!team1Subtype.caught.matches) {
-    errors.push(`${match.team_1} caught dismissals must equal ${match.team_2} catches.`);
+  function hasAnyMatchReconciliationErrors() {
+    return getMatchReconciliationErrors().length > 0;
   }
 
-  if (!team1Subtype.bowledLbw.matches) {
-    errors.push(`${match.team_1} bowled/LBW dismissals must equal ${match.team_2} bowled/LBW credits.`);
+  function getOverallStatus() {
+    if (hasAnyRowErrors() || hasAnyMatchReconciliationErrors()) {
+      return {
+        label: "Needs fixes",
+        className: "bg-red-900/40 text-red-300 border border-red-700",
+      };
+    }
+
+    return {
+      label: "Ready to save",
+      className: "bg-green-900/40 text-green-300 border border-green-700",
+    };
   }
-
-  if (!team1Subtype.stumped.matches) {
-    errors.push(`${match.team_1} stumped dismissals must equal ${match.team_2} stumpings.`);
-  }
-
-  if (!team1Subtype.runOut.matches) {
-    errors.push(`${match.team_1} run-out dismissals must equal ${match.team_2} run outs.`);
-  }
-
-  if (!team2Subtype.caught.matches) {
-    errors.push(`${match.team_2} caught dismissals must equal ${match.team_1} catches.`);
-  }
-
-  if (!team2Subtype.bowledLbw.matches) {
-    errors.push(`${match.team_2} bowled/LBW dismissals must equal ${match.team_1} bowled/LBW credits.`);
-  }
-
-  if (!team2Subtype.stumped.matches) {
-    errors.push(`${match.team_2} stumped dismissals must equal ${match.team_1} stumpings.`);
-  }
-
-  if (!team2Subtype.runOut.matches) {
-    errors.push(`${match.team_2} run-out dismissals must equal ${match.team_1} run outs.`);
-  }
-
-  return errors;
-}
-
-function hasAnyMatchReconciliationErrors() {
-  return getMatchReconciliationErrors().length > 0;
-}
-
-function isEditedRow(playerId: number) {
-  const row = scores[playerId];
-  if (!row) return false;
-
-  return (
-    row.runs > 0 ||
-    row.fours > 0 ||
-    row.sixes > 0 ||
-    row.balls_faced > 0 ||
-    row.is_out ||
-    row.dismissal_type.trim() !== "" ||
-    row.dot_balls > 0 ||
-    row.wickets > 0 ||
-    row.bowled_or_lbw_wickets > 0 ||
-    row.maiden_overs > 0 ||
-    row.overs_bowled > 0 ||
-    row.runs_conceded > 0 ||
-    row.catches > 0 ||
-    row.stumpings > 0 ||
-    row.run_outs > 0
-  );
-}
-
-function getFilteredPlayers() {
-  if (rowFilter === "all") return players;
-  if (rowFilter === "edited") {
-    return players.filter((player) => isEditedRow(player.id));
-  }
-  return players.filter((player) => !getRowValidation(player.id).isValid);
-}
-
-const selectedPlayer =
-  selectedBreakdownPlayerId !== null
-    ? players.find((player) => player.id === selectedBreakdownPlayerId) ?? null
-    : null;
-
-const selectedBreakdown =
-  selectedBreakdownPlayerId !== null
-    ? getScoreBreakdown(selectedBreakdownPlayerId)
-    : null;
 
   async function handleSave() {
-  setMessage("");
-  setSaving(true);
+    setMessage("");
+    setSaving(true);
 
-  if (hasAnyRowErrors()) {
-    setMessage("Fix validation errors before saving.");
-    setSaving(false);
-    return;
+    if (hasAnyRowErrors()) {
+      setMessage("Fix validation errors before saving.");
+      setSaving(false);
+      return;
+    }
+
+    try {
+      const rows = players.map((player) => ({
+        player_id: player.id,
+        in_starting_xi: getRow(player.id).in_starting_xi,
+        runs: getRow(player.id).runs,
+        fours: getRow(player.id).fours,
+        sixes: getRow(player.id).sixes,
+        balls_faced: getRow(player.id).balls_faced,
+        is_out: getRow(player.id).is_out,
+        dismissal_type: getRow(player.id).dismissal_type,
+        dot_balls: getRow(player.id).dot_balls,
+        wickets: getRow(player.id).wickets,
+        bowled_or_lbw_wickets: getRow(player.id).bowled_or_lbw_wickets,
+        maiden_overs: getRow(player.id).maiden_overs,
+        overs_bowled: getRow(player.id).overs_bowled,
+        runs_conceded: getRow(player.id).runs_conceded,
+        catches: getRow(player.id).catches,
+        stumpings: getRow(player.id).stumpings,
+        run_outs: getRow(player.id).run_outs,
+      }));
+
+      const saveRes = await fetch(`/api/admin/match/${matchId}/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rows }),
+      });
+
+      const saveResult = await saveRes.json();
+
+      if (!saveRes.ok) {
+        setMessage(saveResult.error || "Failed to save scores.");
+        setSaving(false);
+        return;
+      }
+
+      const recalcRes = await fetch(`/api/admin/match/${matchId}/recalculate`, {
+        method: "POST",
+      });
+
+      const recalcResult = await recalcRes.json();
+
+      if (!recalcRes.ok) {
+        setMessage(recalcResult.error || "Scores saved, but recalculation failed.");
+        setSaving(false);
+        return;
+      }
+
+      const completeRes = await fetch(`/api/admin/match/${matchId}/complete`, {
+        method: "POST",
+      });
+
+      const completeResult = await completeRes.json();
+
+      if (!completeRes.ok) {
+        setMessage(
+          completeResult.error || "Scores saved, but match completion update failed."
+        );
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Scores saved, leaderboard updated, and match marked completed.");
+    } catch {
+      setMessage("Something went wrong while saving.");
+    } finally {
+      setSaving(false);
+    }
   }
-
-  try {
-    const rows = players.map((player) => ({
-      player_id: player.id,
-      in_starting_xi: scores[player.id]?.in_starting_xi ?? true,
-      runs: scores[player.id]?.runs ?? 0,
-      fours: scores[player.id]?.fours ?? 0,
-      sixes: scores[player.id]?.sixes ?? 0,
-      balls_faced: scores[player.id]?.balls_faced ?? 0,
-      is_out: scores[player.id]?.is_out ?? false,
-      dismissal_type: scores[player.id]?.dismissal_type ?? "",
-      dot_balls: scores[player.id]?.dot_balls ?? 0,
-      wickets: scores[player.id]?.wickets ?? 0,
-      bowled_or_lbw_wickets: scores[player.id]?.bowled_or_lbw_wickets ?? 0,
-      maiden_overs: scores[player.id]?.maiden_overs ?? 0,
-      overs_bowled: scores[player.id]?.overs_bowled ?? 0,
-      runs_conceded: scores[player.id]?.runs_conceded ?? 0,
-      catches: scores[player.id]?.catches ?? 0,
-      stumpings: scores[player.id]?.stumpings ?? 0,
-      run_outs: scores[player.id]?.run_outs ?? 0,
-    }));
-
-    const saveRes = await fetch(`/api/admin/match/${matchId}/save`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ rows }),
-    });
-
-    const saveResult = await saveRes.json();
-
-    if (!saveRes.ok) {
-      setMessage(saveResult.error || "Failed to save scores.");
-      setSaving(false);
-      return;
-    }
-
-    const recalcRes = await fetch(`/api/admin/match/${matchId}/recalculate`, {
-      method: "POST",
-    });
-
-    const recalcResult = await recalcRes.json();
-
-    if (!recalcRes.ok) {
-      setMessage(recalcResult.error || "Scores saved, but recalculation failed.");
-      setSaving(false);
-      return;
-    }
-
-    const completeRes = await fetch(`/api/admin/match/${matchId}/complete`, {
-      method: "POST",
-    });
-
-    const completeResult = await completeRes.json();
-
-    if (!completeRes.ok) {
-      setMessage(
-        completeResult.error || "Scores saved, but match completion update failed."
-      );
-      setSaving(false);
-      return;
-    }
-
-    setMessage("Scores saved, leaderboard updated, and match marked completed.");
-  } catch (error) {
-    setMessage("Something went wrong while saving.");
-  } finally {
-    setSaving(false);
-  }
-}
 
   async function handleReset() {
     const confirmed = window.confirm(
       "Are you sure you want to reset all saved scores for this match?"
     );
-
     if (!confirmed) return;
 
     setMessage("");
@@ -535,27 +663,11 @@ const selectedBreakdown =
 
       const clearedScores: Record<number, PlayerScoreInput> = {};
       players.forEach((player) => {
-        clearedScores[player.id] = {
-  in_starting_xi: true,
-  runs: 0,
-  fours: 0,
-  sixes: 0,
-  balls_faced: 0,
-  is_out: false,
-  dismissal_type: "",
-  dot_balls: 0,
-  wickets: 0,
-  bowled_or_lbw_wickets: 0,
-  maiden_overs: 0,
-  overs_bowled: 0,
-  runs_conceded: 0,
-  catches: 0,
-  stumpings: 0,
-  run_outs: 0,
-};
+        clearedScores[player.id] = { ...EMPTY_ROW };
       });
 
       setScores(clearedScores);
+      setExpandedPlayerIds([]);
       setMessage("Match scores reset successfully.");
     } catch {
       setMessage("Something went wrong while resetting.");
@@ -564,10 +676,41 @@ const selectedBreakdown =
     }
   }
 
+  const visiblePlayers = useMemo(() => {
+    return [...getVisiblePlayers()].sort((a, b) => {
+      const priorityDiff = getCardPriority(a.id) - getCardPriority(b.id);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.name.localeCompare(b.name);
+    });
+  }, [players, scores, teamFilter, squadView, rowFilter, match]);
+
+  useEffect(() => {
+    const invalidVisibleIds = visiblePlayers
+      .filter((player) => !getRowValidation(player.id).isValid)
+      .map((player) => player.id);
+
+    if (invalidVisibleIds.length === 0) return;
+
+    setExpandedPlayerIds((prev) => {
+      const merged = new Set([...prev, ...invalidVisibleIds]);
+      return Array.from(merged);
+    });
+  }, [visiblePlayers]);
+
+  const selectedPlayer =
+    selectedBreakdownPlayerId !== null
+      ? players.find((player) => player.id === selectedBreakdownPlayerId) ?? null
+      : null;
+
+  const selectedBreakdown =
+    selectedBreakdownPlayerId !== null
+      ? getScoreBreakdown(selectedBreakdownPlayerId)
+      : null;
+
   if (loading || !match) {
     return (
-      <main className="min-h-screen bg-black text-white p-8">
-        <div className="max-w-7xl mx-auto">
+      <main className="min-h-screen bg-[#05070B] text-white">
+        <div className="mx-auto max-w-7xl px-6 py-10">
           <p>Loading...</p>
         </div>
       </main>
@@ -575,588 +718,269 @@ const selectedBreakdown =
   }
 
   return (
-    <main className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Enter Match Scores</h1>
-            <p className="text-gray-400">
-              Match #{match.match_number} • {match.team_1} vs {match.team_2} •{" "}
-              {formatMatchDate(match.match_date)}
+    <main className="min-h-screen bg-[#05070B] text-white">
+      <div className="mx-auto max-w-7xl px-6 py-6">
+        <AdminScoreHeader
+          matchNumber={match.match_number}
+          team1={match.team_1}
+          team2={match.team_2}
+          matchDate={formatMatchDate(match.match_date)}
+          statusLabel={getOverallStatus().label}
+          statusClassName={getOverallStatus().className}
+          playerCount={players.length}
+          validRowCount={getValidRowCount()}
+          invalidRowCount={getInvalidRowCount()}
+          visibleRowCount={visiblePlayers.length}
+        />
+
+        <section className="mb-5 mt-28 flex flex-wrap items-center gap-3 xl:mt-24">
+          <SegmentedControl
+            value={teamFilter}
+            onChange={setTeamFilter}
+            options={[
+              { value: "team1", label: match.team_1 },
+              { value: "team2", label: match.team_2 },
+              { value: "all", label: "All Players" },
+            ]}
+          />
+
+          <SegmentedControl
+            value={squadView}
+            onChange={setSquadView}
+            options={[
+              { value: "xi", label: "Match XI" },
+              { value: "full", label: "Full Squad" },
+            ]}
+          />
+
+          <SegmentedControl
+            value={rowFilter}
+            onChange={setRowFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "edited", label: "Edited only" },
+              { value: "invalid", label: "Invalid only" },
+            ]}
+          />
+        </section>
+
+        <section className="mb-6 rounded-[24px] border border-[#243041] bg-[#0B0F14] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.28)]">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-[#F5F7FA]">
+              Scoring Cards
+            </h2>
+            <p className="mt-1 text-sm text-[#778396]">
+              Score one player at a time without spreadsheet-style horizontal scrolling.
             </p>
           </div>
 
-          <Link
-            href="/admin"
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-zinc-500"
-          >
-            Back to Admin
-          </Link>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 mb-8">
-          <p className="text-lg mb-2">Editable scoring form</p>
-          <p className="text-gray-400">
-            This version saves runs, fours, sixes and catches to Supabase.
-          </p>
-        </div>
-        <div className="mb-6 grid gap-4 md:grid-cols-4">
-  <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-    <p className="text-sm text-gray-400">Players</p>
-    <p className="mt-1 text-2xl font-bold">{players.length}</p>
-  </div>
-
-  <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-    <p className="text-sm text-gray-400">Valid Rows</p>
-    <p className="mt-1 text-2xl font-bold">{getValidRowCount()}</p>
-  </div>
-
-  <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-    <p className="text-sm text-gray-400">Invalid Rows</p>
-    <p className="mt-1 text-2xl font-bold">{getInvalidRowCount()}</p>
-  </div>
-
-  <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-    <p className="text-sm text-gray-400">Status</p>
-    <div className="mt-2">
-      <span className={`rounded-full px-3 py-1 text-sm font-medium ${getOverallStatus().className}`}>
-        {getOverallStatus().label}
-      </span>
-    </div>
-  </div>
-</div>
-{match && (
-  <div className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-    <h2 className="text-xl font-semibold mb-4">Dismissal Reconciliation</h2>
-
-    {(() => {
-      const team1Batting = getDismissalReconciliation(match.team_1, match.team_2);
-      const team2Batting = getDismissalReconciliation(match.team_2, match.team_1);
-
-      return (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-800 p-4">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">
-                  {match.team_1} batting vs {match.team_2} fielding
-                </p>
-                <p className="text-sm text-gray-400">
-                  {match.team_1} outs: {team1Batting.outs} · {match.team_2} wickets + run outs:{" "}
-                  {team1Batting.expectedDismissals}
-                </p>
+          <div className="space-y-4">
+            {visiblePlayers.length === 0 ? (
+              <div className="rounded-2xl border border-[#243041] bg-[#0A0F15] p-6 text-sm text-[#778396]">
+                No players match the current filters.
               </div>
+            ) : (
+              visiblePlayers.map((player) => {
+                const row = getRow(player.id);
+                const validation = getRowValidation(player.id);
+                const preview = getPreviewPoints(player.id);
+                const breakdown = getScoreBreakdown(player.id);
+                const oversParsed = parseCricketOvers(row.overs_bowled);
+                const isExpanded = expandedPlayerIds.includes(player.id);
+                const isEdited = isEditedRow(player.id);
+                const battingSummary = getBattingSummary(player.id);
+                const bowlingSummary = getBowlingSummary(player.id);
+                const fieldingSummary = getFieldingSummary(player.id);
 
-              <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  team1Batting.matches
-                    ? "bg-green-900/40 text-green-300 border border-green-700"
-                    : "bg-red-900/40 text-red-300 border border-red-700"
-                }`}
-              >
-                {team1Batting.matches ? "Matched" : "Mismatch"}
-              </span>
-            </div>
+                return (
+                  <ScoringPlayerCard
+                    key={player.id}
+                    player={player}
+                    row={row}
+                    validation={validation}
+                    preview={preview}
+                    breakdown={breakdown}
+                    oversParsedLabel={oversParsed.isValid ? oversParsed.normalized : "Invalid"}
+                    isExpanded={isExpanded}
+                    isEdited={isEdited}
+                    battingSummary={battingSummary}
+                    bowlingSummary={bowlingSummary}
+                    fieldingSummary={fieldingSummary}
+                    onOpenBreakdown={() => setSelectedBreakdownPlayerId(player.id)}
+                    onToggleExpanded={() => toggleExpanded(player.id)}
+                    updateScore={(field, value) => updateScore(player.id, field, value)}
+                    updateBoolean={(field, value) => updateBoolean(player.id, field, value)}
+                    updateText={(field, value) => updateText(player.id, field, value)}
+                    renderField={(label, value, onChange, decimal = false) => (
+                      <Field
+                        label={label}
+                        value={value}
+                        onChange={onChange}
+                        decimal={decimal}
+                      />
+                    )}
+                    renderMiniMetric={(label, value) => (
+                      <MiniMetric label={label} value={value} />
+                    )}
+                  />
+                );
+              })
+            )}
+          </div>
+        </section>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-zinc-800 p-3">
-                <p className="text-sm font-medium mb-2">{match.team_1} batting dismissals</p>
-                <p className="text-sm text-gray-400">
-                  Caught: {getBattingDismissalTypeCount(match.team_1, "caught")} ·
-                  Bowled: {getBattingDismissalTypeCount(match.team_1, "bowled")} ·
-                  LBW: {getBattingDismissalTypeCount(match.team_1, "lbw")} ·
-                  Stumped: {getBattingDismissalTypeCount(match.team_1, "stumped")} ·
-                  Run out: {getBattingDismissalTypeCount(match.team_1, "run_out")}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-zinc-800 p-3">
-                <p className="text-sm font-medium mb-2">{match.team_2} fielding credits</p>
-                <p className="text-sm text-gray-400">
-                  Wickets: {team1Batting.fieldingTotals.wickets} ·
-                  Bowled/LBW: {team1Batting.fieldingTotals.bowledOrLbw} ·
-                  Catches: {team1Batting.fieldingTotals.catches} ·
-                  Stumpings: {team1Batting.fieldingTotals.stumpings} ·
-                  Run outs: {team1Batting.fieldingTotals.runOuts}
-                </p>
-              </div>
-
-              {(() => {
-  const subtype = getSubtypeComparison(match.team_1, match.team_2);
-
-  return (
-    <div className="mt-4 rounded-lg border border-zinc-800 p-3">
-      <p className="text-sm font-medium mb-3">Subtype reconciliation</p>
-
-      <div className="space-y-2 text-sm text-gray-300">
-        <div className="flex items-center justify-between gap-4">
-          <span>Caught dismissals: {subtype.caught.batting} vs Catches: {subtype.caught.fielding}</span>
-          {renderMiniStatus(subtype.caught.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Bowled/LBW dismissals: {subtype.bowledLbw.batting} vs Bowled/LBW credits: {subtype.bowledLbw.fielding}</span>
-          {renderMiniStatus(subtype.bowledLbw.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Stumped dismissals: {subtype.stumped.batting} vs Stumpings: {subtype.stumped.fielding}</span>
-          {renderMiniStatus(subtype.stumped.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Run out dismissals: {subtype.runOut.batting} vs Run outs: {subtype.runOut.fielding}</span>
-          {renderMiniStatus(subtype.runOut.matches)}
-        </div>
-      </div>
-    </div>
-  );
-})()}
-            </div>
+        <section className="mb-24 rounded-[24px] border border-[#243041] bg-[#0B0F14] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.28)]">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-[#F5F7FA]">
+              Dismissal Reconciliation
+            </h2>
+            <p className="mt-1 text-sm text-[#778396]">
+              Review consistency after entering scores. This stays out of the way while scoring.
+            </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 p-4">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">
-                  {match.team_2} batting vs {match.team_1} fielding
-                </p>
-                <p className="text-sm text-gray-400">
-                  {match.team_2} outs: {team2Batting.outs} · {match.team_1} wickets + run outs:{" "}
-                  {team2Batting.expectedDismissals}
-                </p>
+          {getMatchReconciliationErrors().length > 0 && (
+            <div className="mb-4 rounded-xl border border-red-800 bg-red-950/30 p-4">
+              <p className="mb-2 font-medium text-red-300">Reconciliation errors</p>
+              <div className="space-y-1 text-sm text-red-200">
+                {getMatchReconciliationErrors().map((error, index) => (
+                  <div key={index}>• {error}</div>
+                ))}
               </div>
-
-              <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  team2Batting.matches
-                    ? "bg-green-900/40 text-green-300 border border-green-700"
-                    : "bg-red-900/40 text-red-300 border border-red-700"
-                }`}
-              >
-                {team2Batting.matches ? "Matched" : "Mismatch"}
-              </span>
             </div>
+          )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-zinc-800 p-3">
-                <p className="text-sm font-medium mb-2">{match.team_2} batting dismissals</p>
-                <p className="text-sm text-gray-400">
-                  Caught: {getBattingDismissalTypeCount(match.team_2, "caught")} ·
-                  Bowled: {getBattingDismissalTypeCount(match.team_2, "bowled")} ·
-                  LBW: {getBattingDismissalTypeCount(match.team_2, "lbw")} ·
-                  Stumped: {getBattingDismissalTypeCount(match.team_2, "stumped")} ·
-                  Run out: {getBattingDismissalTypeCount(match.team_2, "run_out")}
-                </p>
-              </div>
+          <div className="space-y-4">
+            {(() => {
+              const team1Batting = getDismissalReconciliation(match.team_1, match.team_2);
+              const team2Batting = getDismissalReconciliation(match.team_2, match.team_1);
+              const subtype1 = getSubtypeComparison(match.team_1, match.team_2);
+              const subtype2 = getSubtypeComparison(match.team_2, match.team_1);
 
-              <div className="rounded-lg border border-zinc-800 p-3">
-                <p className="text-sm font-medium mb-2">{match.team_1} fielding credits</p>
-                <p className="text-sm text-gray-400">
-                  Wickets: {team2Batting.fieldingTotals.wickets} ·
-                  Bowled/LBW: {team2Batting.fieldingTotals.bowledOrLbw} ·
-                  Catches: {team2Batting.fieldingTotals.catches} ·
-                  Stumpings: {team2Batting.fieldingTotals.stumpings} ·
-                  Run outs: {team2Batting.fieldingTotals.runOuts}
-                </p>
-              </div>
-              {(() => {
-  const subtype = getSubtypeComparison(match.team_2, match.team_1);
+              return (
+                <>
+                  <ReconciliationCard
+                    title={`${match.team_1} batting vs ${match.team_2} fielding`}
+                    subtitle={`${match.team_1} outs: ${team1Batting.outs} · ${match.team_2} wickets + run outs: ${team1Batting.expectedDismissals}`}
+                    matched={team1Batting.matches}
+                    battingLabel={`${match.team_1} dismissals`}
+                    battingText={`${team1Batting.outs} outs recorded`}
+                    fieldingLabel={`${match.team_2} dismissal credits`}
+                    fieldingText={`${team1Batting.fieldingTotals.wickets} wickets + ${team1Batting.fieldingTotals.runOuts} run outs`}
+                    subtypeItems={[
+                      {
+                        label: `Caught: ${subtype1.caught.batting} vs ${subtype1.caught.fielding}`,
+                        matched: subtype1.caught.matches,
+                      },
+                      {
+                        label: `Bowled/LBW: ${subtype1.bowledLbw.batting} vs ${subtype1.bowledLbw.fielding}`,
+                        matched: subtype1.bowledLbw.matches,
+                      },
+                      {
+                        label: `Stumped: ${subtype1.stumped.batting} vs ${subtype1.stumped.fielding}`,
+                        matched: subtype1.stumped.matches,
+                      },
+                      {
+                        label: `Run out: ${subtype1.runOut.batting} vs ${subtype1.runOut.fielding}`,
+                        matched: subtype1.runOut.matches,
+                      },
+                    ]}
+                  />
 
-  return (
-    <div className="mt-4 rounded-lg border border-zinc-800 p-3">
-      <p className="text-sm font-medium mb-3">Subtype reconciliation</p>
-
-      <div className="space-y-2 text-sm text-gray-300">
-        <div className="flex items-center justify-between gap-4">
-          <span>Caught dismissals: {subtype.caught.batting} vs Catches: {subtype.caught.fielding}</span>
-          {renderMiniStatus(subtype.caught.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Bowled/LBW dismissals: {subtype.bowledLbw.batting} vs Bowled/LBW credits: {subtype.bowledLbw.fielding}</span>
-          {renderMiniStatus(subtype.bowledLbw.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Stumped dismissals: {subtype.stumped.batting} vs Stumpings: {subtype.stumped.fielding}</span>
-          {renderMiniStatus(subtype.stumped.matches)}
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span>Run out dismissals: {subtype.runOut.batting} vs Run outs: {subtype.runOut.fielding}</span>
-          {renderMiniStatus(subtype.runOut.matches)}
-        </div>
-      </div>
-    </div>
-  );
-})()}
-            </div>
+                  <ReconciliationCard
+                    title={`${match.team_2} batting vs ${match.team_1} fielding`}
+                    subtitle={`${match.team_2} outs: ${team2Batting.outs} · ${match.team_1} wickets + run outs: ${team2Batting.expectedDismissals}`}
+                    matched={team2Batting.matches}
+                    battingLabel={`${match.team_2} dismissals`}
+                    battingText={`${team2Batting.outs} outs recorded`}
+                    fieldingLabel={`${match.team_1} dismissal credits`}
+                    fieldingText={`${team2Batting.fieldingTotals.wickets} wickets + ${team2Batting.fieldingTotals.runOuts} run outs`}
+                    subtypeItems={[
+                      {
+                        label: `Caught: ${subtype2.caught.batting} vs ${subtype2.caught.fielding}`,
+                        matched: subtype2.caught.matches,
+                      },
+                      {
+                        label: `Bowled/LBW: ${subtype2.bowledLbw.batting} vs ${subtype2.bowledLbw.fielding}`,
+                        matched: subtype2.bowledLbw.matches,
+                      },
+                      {
+                        label: `Stumped: ${subtype2.stumped.batting} vs ${subtype2.stumped.fielding}`,
+                        matched: subtype2.stumped.matches,
+                      },
+                      {
+                        label: `Run out: ${subtype2.runOut.batting} vs ${subtype2.runOut.fielding}`,
+                        matched: subtype2.runOut.matches,
+                      },
+                    ]}
+                  />
+                </>
+              );
+            })()}
           </div>
-        </div>
-      );
-    })()}
-  </div>
-)}
-<div className="mb-4 flex flex-wrap items-center gap-3">
-  <button
-    onClick={() => setRowFilter("all")}
-    className={`rounded-lg px-4 py-2 text-sm border ${
-      rowFilter === "all"
-        ? "border-white bg-white text-black"
-        : "border-zinc-700 text-white hover:border-zinc-500"
-    }`}
-  >
-    All Players
-  </button>
-
-  <button
-    onClick={() => setRowFilter("edited")}
-    className={`rounded-lg px-4 py-2 text-sm border ${
-      rowFilter === "edited"
-        ? "border-white bg-white text-black"
-        : "border-zinc-700 text-white hover:border-zinc-500"
-    }`}
-  >
-    Edited Rows
-  </button>
-
-  <button
-    onClick={() => setRowFilter("invalid")}
-    className={`rounded-lg px-4 py-2 text-sm border ${
-      rowFilter === "invalid"
-        ? "border-white bg-white text-black"
-        : "border-zinc-700 text-white hover:border-zinc-500"
-    }`}
-  >
-    Invalid Rows
-  </button>
-</div>
-        <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-zinc-900">
-  <tr>
-    <th className="p-4 border-b border-zinc-700">Player</th>
-    <th className="p-4 border-b border-zinc-700">Team</th>
-    <th className="p-4 border-b border-zinc-700">XI</th>
-    <th className="p-4 border-b border-zinc-700">Runs</th>
-    <th className="p-4 border-b border-zinc-700">4s</th>
-    <th className="p-4 border-b border-zinc-700">6s</th>
-    <th className="p-4 border-b border-zinc-700">BF</th>
-    <th className="p-4 border-b border-zinc-700">Out</th>
-    <th className="p-4 border-b border-zinc-700">Dismissal</th>
-    <th className="p-4 border-b border-zinc-700">Dots</th>
-    <th className="p-4 border-b border-zinc-700">Wkts</th>
-    <th className="p-4 border-b border-zinc-700">LBW/Bowled</th>
-    <th className="p-4 border-b border-zinc-700">Maidens</th>
-    <th className="p-4 border-b border-zinc-700">Overs</th>
-    <th className="p-4 border-b border-zinc-700">Conceded</th>
-    <th className="p-4 border-b border-zinc-700">Catches</th>
-    <th className="p-4 border-b border-zinc-700">Stumpings</th>
-    <th className="p-4 border-b border-zinc-700">Run Outs</th>
-    <th className="p-4 border-b border-zinc-700">Preview</th>
-    <th className="p-4 border-b border-zinc-700">Breakdown</th>
-  </tr>
-</thead>
-            <tbody>
-             {getFilteredPlayers().map((player) => {
-  const validation = getRowValidation(player.id);
-
-  return (
-    <tr
-      key={player.id}
-      className={`align-top odd:bg-zinc-950 even:bg-black ${
-        !validation.isValid ? "bg-red-950/20" : ""
-      }`}
-    >
-    <td className="p-4 border-b border-zinc-800">{player.name}</td>
-    <td className="p-4 border-b border-zinc-800">{player.ipl_team}</td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="checkbox"
-        checked={scores[player.id]?.in_starting_xi ?? true}
-        onChange={(e) => updateBoolean(player.id, "in_starting_xi", e.target.checked)}
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.runs ?? 0}
-        onChange={(e) => updateScore(player.id, "runs", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.fours ?? 0}
-        onChange={(e) => updateScore(player.id, "fours", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.sixes ?? 0}
-        onChange={(e) => updateScore(player.id, "sixes", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.balls_faced ?? 0}
-        onChange={(e) => updateScore(player.id, "balls_faced", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="checkbox"
-        checked={scores[player.id]?.is_out ?? false}
-        onChange={(e) => updateBoolean(player.id, "is_out", e.target.checked)}
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <select
-        value={scores[player.id]?.dismissal_type ?? ""}
-        onChange={(e) => updateText(player.id, "dismissal_type", e.target.value)}
-        className="w-32 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      >
-        <option value="">-</option>
-        <option value="bowled">bowled</option>
-        <option value="caught">caught</option>
-        <option value="lbw">lbw</option>
-        <option value="run_out">run_out</option>
-        <option value="stumped">stumped</option>
-        <option value="hit_wicket">hit_wicket</option>
-      </select>
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.dot_balls ?? 0}
-        onChange={(e) => updateScore(player.id, "dot_balls", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.wickets ?? 0}
-        onChange={(e) => updateScore(player.id, "wickets", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.bowled_or_lbw_wickets ?? 0}
-        onChange={(e) =>
-          updateScore(player.id, "bowled_or_lbw_wickets", e.target.value)
-        }
-        className="w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.maiden_overs ?? 0}
-        onChange={(e) => updateScore(player.id, "maiden_overs", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        step="0.1"
-        value={scores[player.id]?.overs_bowled ?? 0}
-        onChange={(e) => updateScore(player.id, "overs_bowled", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.runs_conceded ?? 0}
-        onChange={(e) => updateScore(player.id, "runs_conceded", e.target.value)}
-        className="w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.catches ?? 0}
-        onChange={(e) => updateScore(player.id, "catches", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.stumpings ?? 0}
-        onChange={(e) => updateScore(player.id, "stumpings", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-      <input
-        type="number"
-        min="0"
-        value={scores[player.id]?.run_outs ?? 0}
-        onChange={(e) => updateScore(player.id, "run_outs", e.target.value)}
-        className="w-20 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-white"
-      />
-    </td>
-
-    <td className="p-4 border-b border-zinc-800 font-semibold">
-      {getPreviewPoints(player.id)}
-    </td>
-
-    <td className="p-4 border-b border-zinc-800">
-  <button
-    onClick={() => setSelectedBreakdownPlayerId(player.id)}
-    className="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:border-zinc-500"
-  >
-    View
-  </button>
-</td>
-<td className="p-4 border-b border-zinc-800 text-xs min-w-[260px]">
-  {validation.isValid ? (
-    <span className="text-green-400">OK</span>
-  ) : (
-    <div className="space-y-1 text-red-300">
-      {validation.errors.map((error, index) => (
-        <div key={index}>• {error}</div>
-      ))}
-    </div>
-  )}
-</td>
-  </tr>
-);
-             })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="sticky bottom-4 z-40 mt-6">
-  <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/95 p-4 backdrop-blur">
-    <button
-      onClick={handleSave}
-      disabled={saving || resetting || hasAnyRowErrors() || hasAnyMatchReconciliationErrors()}
-      className="rounded-lg bg-white px-5 py-3 font-medium text-black hover:bg-gray-200 disabled:opacity-60"
-    >
-      {saving ? "Saving..." : "Save Scores"}
-    </button>
-
-    <button
-      onClick={handleReset}
-      disabled={saving || resetting}
-      className="rounded-lg border border-red-700 px-5 py-3 font-medium text-red-300 hover:bg-red-950/30 disabled:opacity-60"
-    >
-      {resetting ? "Resetting..." : "Reset Match"}
-    </button>
-
-    <div className="min-w-[220px] text-sm text-gray-300">
-      {message || "No pending action."}
-    </div>
-
-    <div className="ml-auto">
-      <span className={`rounded-full px-3 py-1 text-sm font-medium ${getOverallStatus().className}`}>
-        {getOverallStatus().label}
-      </span>
-    </div>
-  </div>
-</div>
-
-        <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-          <h2 className="text-xl font-semibold mb-3">Preview formula</h2>
-          <p className="text-gray-400">
-  Preview Points now use the full fantasy scoring logic based on Dream XI rules.
-</p>
-        </div>
-      </div>
-      {selectedPlayer && selectedBreakdown && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-    <div className="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">{selectedPlayer.name}</h2>
-          <p className="text-sm text-gray-400">{selectedPlayer.ipl_team}</p>
-        </div>
-
-        <button
-          onClick={() => setSelectedBreakdownPlayerId(null)}
-          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:border-zinc-500"
-        >
-          Close
-        </button>
+        </section>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-zinc-800">
-        <div className="grid grid-cols-2 bg-zinc-900 text-sm font-medium">
-          <div className="p-3 border-b border-zinc-800">Component</div>
-          <div className="p-3 border-b border-zinc-800">Points</div>
+      <BreakdownModal
+        open={!!selectedPlayer && !!selectedBreakdown}
+        onClose={() => setSelectedBreakdownPlayerId(null)}
+        playerName={selectedPlayer?.name}
+        iplTeam={selectedPlayer?.ipl_team}
+        breakdown={selectedBreakdown}
+      />
 
-          <div className="p-3 border-b border-zinc-800">Playing XI</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.playing_xi_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Batting</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.batting_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Batting Milestone</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.batting_milestone_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Strike Rate</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.strike_rate_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Bowling</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.bowling_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Bowling Milestone</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.bowling_milestone_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Economy</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.economy_points}</div>
-
-          <div className="p-3 border-b border-zinc-800">Fielding</div>
-          <div className="p-3 border-b border-zinc-800">{selectedBreakdown.fielding_points}</div>
-
-          <div className="p-3 font-semibold">Total</div>
-          <div className="p-3 font-semibold">{selectedBreakdown.total_points}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      <AdminSaveBar
+        onSave={handleSave}
+        onReset={handleReset}
+        saving={saving}
+        resetting={resetting}
+        disabledSave={hasAnyRowErrors()}
+        message={message}
+        statusLabel={getOverallStatus().label}
+        statusClassName={getOverallStatus().className}
+      />
     </main>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  decimal = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: string) => void;
+  decimal?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm text-[#A8B3C2]">{label}</label>
+      <input
+        type="number"
+        step={decimal ? "0.1" : "1"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-white"
+      />
+    </div>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-lg border border-[#243041] bg-[#10161E] p-3">
+      <div className="text-xs uppercase tracking-[0.16em] text-[#778396]">
+        {label}
+      </div>
+      <div className="mt-1 text-base font-semibold text-[#F5F7FA]">{value}</div>
+    </div>
   );
 }
