@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { calculateFantasyPoints } from "@/src/lib/fantasy-scoring";
 import {
   validatePlayerScoreRow,
@@ -73,6 +73,7 @@ type PlayerScoreInput = {
 type TeamFilter = "team1" | "team2" | "all";
 type SquadView = "xi" | "full";
 type RowFilter = "all" | "edited" | "invalid";
+type InningsValue = 1 | 2;
 
 const EMPTY_ROW: PlayerScoreInput = {
   in_starting_xi: true,
@@ -93,12 +94,38 @@ const EMPTY_ROW: PlayerScoreInput = {
   run_outs: 0,
 };
 
+type ParsedBattingRow = {
+  name: string;
+  dismissalText: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+};
+
+type ParsedBowlingRow = {
+  name: string;
+  overs: number;
+  maidens: number;
+  runsConceded: number;
+  wickets: number;
+};
+
+type ImportApiResponse = {
+  success: boolean;
+  error?: string;
+  ocrText?: string;
+  parsed?: {
+    battingRows?: ParsedBattingRow[];
+    bowlingRows?: ParsedBowlingRow[];
+  };
+};
 export default function AdminMatchPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [matchId, setMatchId] = useState("");
+    const [matchId, setMatchId] = useState("");
   const [match, setMatch] = useState<MatchData["match"] | null>(null);
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [scores, setScores] = useState<Record<number, PlayerScoreInput>>({});
@@ -111,6 +138,17 @@ export default function AdminMatchPage({
   const [rowFilter, setRowFilter] = useState<RowFilter>("all");
   const [expandedPlayerIds, setExpandedPlayerIds] = useState<number[]>([]);
   const [selectedBreakdownPlayerId, setSelectedBreakdownPlayerId] = useState<number | null>(null);
+
+  const [selectedInnings, setSelectedInnings] = useState<1 | 2>(1);
+  const [importImageFile, setImportImageFile] = useState<File | null>(null);
+  const [importPreviewUrl, setImportPreviewUrl] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string>("No screenshot selected.");
+  const [importing, setImporting] = useState(false);
+  const [ocrTextPreview, setOcrTextPreview] = useState("");
+  const [parsedBattingRows, setParsedBattingRows] = useState<ParsedBattingRow[]>([]);
+  const [parsedBowlingRows, setParsedBowlingRows] = useState<ParsedBowlingRow[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hasInitializedScores = useRef(false);
 
   useEffect(() => {
     async function loadData() {
@@ -158,13 +196,24 @@ export default function AdminMatchPage({
           run_outs: saved?.run_outs ?? 0,
         };
       });
-
-      setScores(initialScores);
+      
+      if (!hasInitializedScores.current) {
+  setScores(initialScores);
+  hasInitializedScores.current = true;
+}
       setLoading(false);
     }
 
     loadData();
   }, [params]);
+
+  useEffect(() => {
+    return () => {
+      if (importPreviewUrl) {
+        URL.revokeObjectURL(importPreviewUrl);
+      }
+    };
+  }, [importPreviewUrl]);
 
   function formatMatchDate(dateString: string) {
     const date = new Date(dateString);
@@ -244,6 +293,220 @@ export default function AdminMatchPage({
       !row.in_starting_xi
     );
   }
+
+  function normalizeName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findPlayerByParsedName(name: string) {
+  const normalizedTarget = normalizeName(name);
+
+  let bestPlayer: MatchPlayer | null = null;
+  let bestScore = -1;
+
+  for (const player of players) {
+    const normalizedPlayer = normalizeName(player.name);
+
+    let score = 0;
+    if (normalizedPlayer === normalizedTarget) score += 100;
+    if (normalizedTarget.includes(normalizedPlayer)) score += 60;
+    if (normalizedPlayer.includes(normalizedTarget)) score += 40;
+
+    const playerWords = normalizedPlayer.split(" ").filter(Boolean);
+    const matchedWords = playerWords.filter((word) =>
+      normalizedTarget.includes(word)
+    ).length;
+    score += matchedWords * 10;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPlayer = player;
+    }
+  }
+
+  if (!bestPlayer || bestScore < 70) return null;
+  return bestPlayer;
+}
+
+function inferDismissalType(dismissalText: string): string {
+  const text = dismissalText.toLowerCase().trim();
+
+  if (!text || text === "not out") return "";
+  if (text.includes("run out")) return "run_out";
+  if (text.startsWith("lbw")) return "lbw";
+  if (text.startsWith("st ")) return "stumped";
+  if (text.includes("c & b")) return "caught";
+  if (text.startsWith("c ")) return "caught";
+  if (text.startsWith("b ")) return "bowled";
+  if (text.includes("hit wicket")) return "hit_wicket";
+
+  return "";
+}
+function extractDismissalCredits(dismissalText: string) {
+  const text = dismissalText.trim();
+
+  if (!text || text.toLowerCase() === "not out") {
+    return {
+      catcherName: "",
+      stumperName: "",
+      bowlerName: "",
+      addBowledOrLbw: false,
+      caughtAndBowled: false,
+    };
+  }
+
+  const lower = text.toLowerCase();
+
+  if (lower.includes("c & b")) {
+    const bowlerName = text.replace(/^c\s*&\s*b\s+/i, "").trim();
+    return {
+      catcherName: bowlerName,
+      stumperName: "",
+      bowlerName,
+      addBowledOrLbw: false,
+      caughtAndBowled: true,
+    };
+  }
+
+  if (lower.startsWith("lbw b ")) {
+    const bowlerName = text.replace(/^lbw\s+b\s+/i, "").trim();
+    return {
+      catcherName: "",
+      stumperName: "",
+      bowlerName,
+      addBowledOrLbw: true,
+      caughtAndBowled: false,
+    };
+  }
+
+  if (lower.startsWith("b ")) {
+    const bowlerName = text.replace(/^b\s+/i, "").trim();
+    return {
+      catcherName: "",
+      stumperName: "",
+      bowlerName,
+      addBowledOrLbw: true,
+      caughtAndBowled: false,
+    };
+  }
+
+  if (lower.startsWith("st ")) {
+    const match = text.match(/^st\s+(.+?)\s+b\s+(.+)$/i);
+    return {
+      catcherName: "",
+      stumperName: match?.[1]?.trim() || "",
+      bowlerName: match?.[2]?.trim() || "",
+      addBowledOrLbw: false,
+      caughtAndBowled: false,
+    };
+  }
+
+  if (lower.startsWith("c ")) {
+    const match = text.match(/^c\s+(.+?)\s+b\s+(.+)$/i);
+    return {
+      catcherName: match?.[1]?.trim() || "",
+      stumperName: "",
+      bowlerName: match?.[2]?.trim() || "",
+      addBowledOrLbw: false,
+      caughtAndBowled: false,
+    };
+  }
+
+  return {
+    catcherName: "",
+    stumperName: "",
+    bowlerName: "",
+    addBowledOrLbw: false,
+    caughtAndBowled: false,
+  };
+}
+
+function applyParsedRowsToScores(
+  battingRows: ParsedBattingRow[],
+  bowlingRows: ParsedBowlingRow[]
+) {
+  setScores((prev) => {
+    const next = { ...prev };
+
+    for (const row of battingRows) {
+      const matchedPlayer = findPlayerByParsedName(row.name);
+      if (!matchedPlayer) continue;
+
+      const dismissalType = inferDismissalType(row.dismissalText);
+      const isOut =
+        row.dismissalText.trim().toLowerCase() !== "not out" &&
+        row.dismissalText.trim() !== "";
+
+      next[matchedPlayer.id] = {
+        ...next[matchedPlayer.id],
+        in_starting_xi: true,
+        runs: row.runs,
+        balls_faced: row.balls,
+        fours: row.fours,
+        sixes: row.sixes,
+        is_out: isOut,
+        dismissal_type: dismissalType,
+      };
+
+      const credits = extractDismissalCredits(row.dismissalText);
+
+      if (credits.catcherName) {
+        const catcher = findPlayerByParsedName(credits.catcherName);
+        if (catcher) {
+          next[catcher.id] = {
+            ...next[catcher.id],
+            in_starting_xi: true,
+            catches: (next[catcher.id]?.catches ?? 0) + 1,
+          };
+        }
+      }
+
+      if (credits.stumperName) {
+        const stumper = findPlayerByParsedName(credits.stumperName);
+        if (stumper) {
+          next[stumper.id] = {
+            ...next[stumper.id],
+            in_starting_xi: true,
+            stumpings: (next[stumper.id]?.stumpings ?? 0) + 1,
+          };
+        }
+      }
+
+      if (credits.addBowledOrLbw && credits.bowlerName) {
+        const bowler = findPlayerByParsedName(credits.bowlerName);
+        if (bowler) {
+          next[bowler.id] = {
+            ...next[bowler.id],
+            in_starting_xi: true,
+            bowled_or_lbw_wickets:
+              (next[bowler.id]?.bowled_or_lbw_wickets ?? 0) + 1,
+          };
+        }
+      }
+    }
+
+    for (const row of bowlingRows) {
+      const matchedPlayer = findPlayerByParsedName(row.name);
+      if (!matchedPlayer) continue;
+
+      next[matchedPlayer.id] = {
+        ...next[matchedPlayer.id],
+        in_starting_xi: true,
+        overs_bowled: row.overs,
+        maiden_overs: row.maidens,
+        runs_conceded: row.runsConceded,
+        wickets: row.wickets,
+      };
+    }
+
+    return next;
+  });
+}
 
   function isMeaningfullyUsedRow(playerId: number) {
     const row = getRow(playerId);
@@ -558,6 +821,116 @@ export default function AdminMatchPage({
     };
   }
 
+  function handleImportFileChange(file: File | null) {
+  if (!file) return;
+
+  setImportImageFile(file);
+  setOcrTextPreview("");
+  setParsedBattingRows([]);
+  setParsedBowlingRows([]);
+  setImportPreviewUrl((prev) => {
+    if (prev) URL.revokeObjectURL(prev);
+    return URL.createObjectURL(file);
+  });
+  setImportStatus(`Selected: ${file.name}`);
+}
+
+  function handleChooseFile(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = e.target.files?.[0] ?? null;
+    handleImportFileChange(file);
+  }
+
+  async function handlePasteScreenshot() {
+    try {
+      if (!navigator.clipboard?.read) {
+        setImportStatus("Clipboard image paste is not supported in this browser.");
+        return;
+      }
+
+      const items = await navigator.clipboard.read();
+
+      for (const item of items) {
+        const imageType = item.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+
+        const blob = await item.getType(imageType);
+        const extension = imageType.split("/")[1] || "png";
+        const file = new File([blob], `pasted-scorecard.${extension}`, {
+          type: imageType,
+        });
+
+        handleImportFileChange(file);
+        return;
+      }
+
+      setImportStatus("No image found in clipboard.");
+    } catch {
+      setImportStatus("Clipboard paste failed. Try file upload instead.");
+    }
+  }
+
+  async function handleImportScreenshot() {
+  if (!importImageFile) {
+    setImportStatus("Select or paste a screenshot first.");
+    return;
+  }
+
+  try {
+    setImporting(true);
+    setImportStatus("Running OCR on screenshot...");
+    setOcrTextPreview("");
+    setParsedBattingRows([]);
+    setParsedBowlingRows([]);
+
+    const formData = new FormData();
+    formData.append("matchId", matchId);
+    formData.append("innings", String(selectedInnings));
+    formData.append("image", importImageFile);
+    formData.append(
+      "pagePlayers",
+      JSON.stringify(
+        players.map((player) => ({
+          id: player.id,
+          name: player.name,
+          role: player.role,
+          ipl_team: player.ipl_team,
+        }))
+      )
+    );
+
+    const res = await fetch("/api/admin/import-scorecard", {
+      method: "POST",
+      body: formData,
+    });
+
+    const result: ImportApiResponse = await res.json();
+
+    if (!res.ok || !result.success) {
+      setImportStatus(result.error || "Import failed.");
+      return;
+    }
+
+    const battingRows = result.parsed?.battingRows || [];
+    const bowlingRows = result.parsed?.bowlingRows || [];
+
+    setOcrTextPreview(result.ocrText || "");
+    setParsedBattingRows(battingRows);
+    setParsedBowlingRows(bowlingRows);
+
+    applyParsedRowsToScores(battingRows, bowlingRows);
+
+    setImportStatus(
+      `Imported into cards • ${battingRows.length} batting rows • ${bowlingRows.length} bowling rows`
+    );
+  } catch {
+    setImportStatus("Import request failed.");
+  } finally {
+    setImporting(false);
+  }
+}
+
   async function handleSave() {
     setMessage("");
     setSaving(true);
@@ -733,7 +1106,187 @@ export default function AdminMatchPage({
           visibleRowCount={visiblePlayers.length}
         />
 
-        <section className="mb-5 mt-28 flex flex-wrap items-center gap-3 xl:mt-24">
+        <section className="mb-5 mt-28 rounded-[24px] border border-[#243041] bg-[#0B0F14] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.28)] xl:mt-24">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.24em] text-[#7FE3AE]">
+                Screenshot import
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold text-[#F5F7FA]">
+                Import one innings from screenshot
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#778396]">
+                Use one Cricbuzz-style innings screenshot. This will later fill batting,
+                bowling, and derivable fielding stats on this page before you save.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedInnings(1)}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  selectedInnings === 1
+                    ? "border-white bg-white text-black"
+                    : "border-[#243041] bg-[#10161E] text-[#F5F7FA] hover:border-[#2FA36B]/40 hover:bg-[#111924]"
+                }`}
+              >
+                1st innings
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedInnings(2)}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  selectedInnings === 2
+                    ? "border-white bg-white text-black"
+                    : "border-[#243041] bg-[#10161E] text-[#F5F7FA] hover:border-[#2FA36B]/40 hover:bg-[#111924]"
+                }`}
+              >
+                2nd innings
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+            <div className="rounded-[20px] border border-[#243041] bg-[#0A0F15] p-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                className="hidden"
+                onChange={handleChooseFile}
+              />
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-full border border-[#243041] bg-[#10161E] px-4 py-2 text-sm font-medium text-[#F5F7FA] transition hover:border-[#2FA36B]/40 hover:bg-[#111924]"
+                >
+                  Upload screenshot
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePasteScreenshot}
+                  className="rounded-full border border-[#243041] bg-[#10161E] px-4 py-2 text-sm font-medium text-[#F5F7FA] transition hover:border-[#2FA36B]/40 hover:bg-[#111924]"
+                >
+                  Paste screenshot
+                </button>
+
+                <button
+  type="button"
+  disabled={!importImageFile || importing}
+  onClick={handleImportScreenshot}
+  className="rounded-full bg-[#7FE3AE] px-4 py-2 text-sm font-semibold text-black transition hover:bg-[#98edbf] disabled:cursor-not-allowed disabled:opacity-50"
+>
+  {importing ? "Importing..." : "Import screenshot"}
+</button>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-[#243041] bg-[#0B0F14] p-4">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="rounded-full border border-[#8E6A2A]/35 bg-[#2A2114]/50 px-3 py-1 text-[#E6C98B]">
+                    Selected innings: {selectedInnings === 1 ? "1st innings" : "2nd innings"}
+                  </span>
+                  <span className="text-[#A8B3C2]">{importStatus}</span>
+                </div>
+
+                <p className="mt-3 text-xs leading-5 text-[#778396]">
+                  PNG, JPG, WEBP, pasted screenshots, and clear mobile photos are supported.
+                  Parsing will be wired in next.
+                </p>
+              </div>
+              {ocrTextPreview ? (
+  <div className="mt-4 rounded-2xl border border-[#243041] bg-[#0B0F14] p-4">
+    <div className="text-xs uppercase tracking-[0.2em] text-[#778396]">
+      OCR Preview
+    </div>
+    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-6 text-[#A8B3C2]">
+      {ocrTextPreview}
+    </pre>
+  </div>
+) : null}
+{parsedBattingRows.length > 0 || parsedBowlingRows.length > 0 ? (
+  <div className="mt-4 grid gap-4 xl:grid-cols-2">
+    <div className="rounded-2xl border border-[#243041] bg-[#0B0F14] p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-[#D6B36A]">
+        Parsed Batting Rows
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {parsedBattingRows.length === 0 ? (
+          <div className="text-sm text-[#778396]">No batting rows parsed.</div>
+        ) : (
+          parsedBattingRows.map((row, index) => (
+            <div
+              key={`${row.name}-${index}`}
+              className="rounded-xl border border-[#243041] bg-[#0A0F15] p-3"
+            >
+              <div className="font-medium text-[#F5F7FA]">{row.name}</div>
+              <div className="mt-1 text-xs text-[#A8B3C2]">
+                {row.dismissalText || "no dismissal text"}
+              </div>
+              <div className="mt-2 text-sm text-[#778396]">
+                {row.runs} runs • {row.balls} balls • {row.fours}x4 • {row.sixes}x6
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-[#243041] bg-[#0B0F14] p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-[#7FE3AE]">
+        Parsed Bowling Rows
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {parsedBowlingRows.length === 0 ? (
+          <div className="text-sm text-[#778396]">No bowling rows parsed.</div>
+        ) : (
+          parsedBowlingRows.map((row, index) => (
+            <div
+              key={`${row.name}-${index}`}
+              className="rounded-xl border border-[#243041] bg-[#0A0F15] p-3"
+            >
+              <div className="font-medium text-[#F5F7FA]">{row.name}</div>
+              <div className="mt-2 text-sm text-[#778396]">
+                {row.overs} ov • {row.maidens} maidens • {row.runsConceded} runs • {row.wickets} wickets
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+) : null}
+            </div>
+
+            <div className="rounded-[20px] border border-[#243041] bg-[#0A0F15] p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-[#778396]">
+                Preview
+              </div>
+
+              <div className="mt-3 flex aspect-[3/4] items-center justify-center overflow-hidden rounded-2xl border border-[#243041] bg-black/30">
+                {importPreviewUrl ? (
+                  <img
+                    src={importPreviewUrl}
+                    alt="Screenshot preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="px-4 text-center text-sm text-[#5F6B7A]">
+                    No image selected
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-5 flex flex-wrap items-center gap-3">
           <SegmentedControl
             value={teamFilter}
             onChange={setTeamFilter}
