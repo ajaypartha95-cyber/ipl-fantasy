@@ -1,9 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ["tesseract.js"],
-  },
+  serverExternalPackages: ["tesseract.js", "tesseract.js-core"],
   outputFileTracingIncludes: {
     "/api/**/*": ["./node_modules/**/*.wasm", "./node_modules/**/*.traineddata"],
   },

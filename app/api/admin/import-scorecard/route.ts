@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import Tesseract from "tesseract.js";
+import { createWorker } from "tesseract.js";
 import sharp from "sharp";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type PagePlayer = {
   id: number;
@@ -135,7 +138,9 @@ function scorePlayerMatch(text: string, player: PagePlayer) {
   if (normalizedText.includes(normalizedPlayer)) score += 90;
 
   const playerWords = normalizedPlayer.split(" ").filter(Boolean);
-  const matchedWords = playerWords.filter((word) => normalizedText.includes(word)).length;
+  const matchedWords = playerWords.filter((word) =>
+    normalizedText.includes(word)
+  ).length;
   score += matchedWords * 15;
 
   const joinedPlayer = normalizedPlayer.replace(/\s+/g, "");
@@ -171,7 +176,10 @@ function replaceMatchedName(originalText: string, playerName: string) {
   const playerWords = playerName.split(/\s+/).filter(Boolean);
   let updated = originalText;
   for (const word of playerWords) {
-    const wordRegex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    const wordRegex = new RegExp(
+      `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i"
+    );
     updated = updated.replace(wordRegex, " ");
   }
 
@@ -221,13 +229,17 @@ function canonicalizeDismissalText(
 
   if (lower.startsWith("lbw") || lower.includes(" lbw ")) {
     const bowlerMatch = text.match(/\bb\s+(.+)$/i);
-    const bowler = bowlerMatch ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates) : findBestPlayerMatch(text, bowlerCandidates);
+    const bowler = bowlerMatch
+      ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates)
+      : findBestPlayerMatch(text, bowlerCandidates);
     return bowler ? `lbw b ${bowler.name}` : text;
   }
 
   if (/^st\s+/i.test(text) || lower.includes(" st ")) {
     const bowlerMatch = text.match(/\bb\s+(.+)$/i);
-    const bowler = bowlerMatch ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates) : null;
+    const bowler = bowlerMatch
+      ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates)
+      : null;
 
     const keeperPart = text
       .replace(/^st\s+/i, "")
@@ -243,7 +255,9 @@ function canonicalizeDismissalText(
 
   if (/^c\s+/i.test(text) || lower.includes(" c ")) {
     const bowlerMatch = text.match(/\bb\s+(.+)$/i);
-    const bowler = bowlerMatch ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates) : null;
+    const bowler = bowlerMatch
+      ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates)
+      : null;
 
     const catcherPart = text
       .replace(/^c\s+/i, "")
@@ -260,7 +274,9 @@ function canonicalizeDismissalText(
 
   if (/^b\s+/i.test(text) || lower.includes(" b ")) {
     const bowlerMatch = text.match(/\bb\s+(.+)$/i);
-    const bowler = bowlerMatch ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates) : null;
+    const bowler = bowlerMatch
+      ? findBestPlayerMatch(bowlerMatch[1], bowlerCandidates)
+      : null;
     return bowler ? `b ${bowler.name}` : text;
   }
 
@@ -353,6 +369,8 @@ function dedupeBowlingRows(rows: ParsedBowlingRow[]) {
 }
 
 export async function POST(req: Request) {
+  let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
+
   try {
     const formData = await req.formData();
 
@@ -394,11 +412,13 @@ export async function POST(req: Request) {
       .png()
       .toBuffer();
 
-    const result = await Tesseract.recognize(processedBuffer, "eng", {
+    worker = await createWorker("eng", 1, {
       logger: () => {},
     });
 
+    const result = await worker.recognize(processedBuffer);
     const rawText = result.data.text ?? "";
+
     const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
     const { battingLines, bowlingLines } = splitSections(lines);
 
@@ -457,9 +477,16 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to process screenshot OCR.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to process screenshot OCR.",
       },
       { status: 500 }
     );
+  } finally {
+    if (worker) {
+      await worker.terminate();
+    }
   }
 }
