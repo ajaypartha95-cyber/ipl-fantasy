@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { createWorker } from "tesseract.js";
-import sharp from "sharp";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -216,7 +214,11 @@ function canonicalizeDismissalText(
   let text = normalizeDismissalPrefix(cleanupDismissalNoise(dismissalText));
 
   if (!text) return "";
-  if (/^not out$/i.test(text) || /^n0t out$/i.test(text) || /^not\s*0ut$/i.test(text)) {
+  if (
+    /^not out$/i.test(text) ||
+    /^n0t out$/i.test(text) ||
+    /^not\s*0ut$/i.test(text)
+  ) {
     return "not out";
   }
 
@@ -369,57 +371,32 @@ function dedupeBowlingRows(rows: ParsedBowlingRow[]) {
 }
 
 export async function POST(req: Request) {
-  let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
-
   try {
     const formData = await req.formData();
 
     const matchId = formData.get("matchId");
     const innings = formData.get("innings");
-    const image = formData.get("image");
+    const ocrText = formData.get("ocrText");
     const pagePlayersRaw = formData.get("pagePlayers");
 
-    if (!matchId || !innings || !image || !pagePlayersRaw) {
+    if (!matchId || !innings || !ocrText || !pagePlayersRaw) {
       return NextResponse.json(
         {
           success: false,
-          error: "matchId, innings, image, and pagePlayers are required.",
+          error: "matchId, innings, ocrText, and pagePlayers are required.",
         },
         { status: 400 }
       );
     }
 
-    if (!(image instanceof File)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Uploaded image is invalid.",
-        },
-        { status: 400 }
-      );
-    }
-
+    const rawText = String(ocrText);
     const pagePlayers = JSON.parse(String(pagePlayersRaw)) as PagePlayer[];
 
-    const arrayBuffer = await image.arrayBuffer();
-    const inputBuffer = Buffer.from(arrayBuffer);
+    const lines = rawText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    const processedBuffer = await sharp(inputBuffer)
-      .grayscale()
-      .normalize()
-      .sharpen()
-      .resize({ width: 2200, withoutEnlargement: false })
-      .png()
-      .toBuffer();
-
-    worker = await createWorker("eng", 1, {
-      logger: () => {},
-    });
-
-    const result = await worker.recognize(processedBuffer);
-    const rawText = result.data.text ?? "";
-
-    const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
     const { battingLines, bowlingLines } = splitSections(lines);
 
     const battingCandidates = pagePlayers.filter(
@@ -452,13 +429,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "OCR completed successfully.",
+      message: "OCR text parsed successfully.",
       meta: {
         matchId: String(matchId),
         innings: Number(innings),
-        fileName: image.name,
-        fileType: image.type,
-        fileSize: image.size,
       },
       ocrText: rawText,
       debug: {
@@ -480,13 +454,9 @@ export async function POST(req: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to process screenshot OCR.",
+            : "Failed to parse OCR text.",
       },
       { status: 500 }
     );
-  } finally {
-    if (worker) {
-      await worker.terminate();
-    }
   }
 }
