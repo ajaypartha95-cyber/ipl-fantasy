@@ -6,21 +6,41 @@ type LeaderboardRowProps = {
   ownerName?: string;
   teamName?: string;
   totalPoints: number;
+  rankChange?: number | null;
 };
+
+function RankChangeBadge({ change }: { change: number | null | undefined }) {
+  if (change == null) return null;
+  if (change === 0)
+    return <span className="text-xs text-stone-500">—</span>;
+  if (change > 0)
+    return (
+      <span className="text-xs font-medium text-emerald-400">
+        ▲{change}
+      </span>
+    );
+  return (
+    <span className="text-xs font-medium text-red-400">
+      ▼{Math.abs(change)}
+    </span>
+  );
+}
 
 export function LeaderboardRow({
   rank,
   ownerName,
   teamName,
   totalPoints,
+  rankChange,
 }: LeaderboardRowProps) {
   const rankTone =
     rank === 1 ? "gold" : rank === 2 ? "info" : rank === 3 ? "default" : "default";
 
   return (
     <div className="grid items-center gap-4 border-t border-white/10 px-5 py-4 first:border-t-0 md:grid-cols-[110px_1.1fr_1fr_160px]">
-      <div>
+      <div className="flex items-center gap-2">
         <Pill tone={rankTone}>#{rank}</Pill>
+        <RankChangeBadge change={rankChange} />
       </div>
 
       <div>

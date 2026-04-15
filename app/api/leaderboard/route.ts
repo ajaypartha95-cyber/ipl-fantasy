@@ -9,6 +9,7 @@ export async function GET() {
       fantasy_team_id,
       season_id,
       total_points,
+      previous_rank,
       fantasy_teams (
         id,
         team_name,
@@ -25,10 +26,16 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rankedData = (data ?? []).map((row: any, index: number) => ({
-    ...row,
-    rank: index + 1,
-  }));
+  const rankedData = (data ?? []).map((row: any, index: number) => {
+    const currentRank = index + 1;
+    const rankChange =
+      row.previous_rank != null ? row.previous_rank - currentRank : null;
+    return {
+      ...row,
+      rank: currentRank,
+      rank_change: rankChange,
+    };
+  });
 
   const { data: matches, error: matchesError } = await supabase
     .from("matches")

@@ -187,8 +187,22 @@ export default async function LeaderboardPage() {
 
                 <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="text-sm text-stone-500">Fantasy Points</div>
-                  <div className="mt-2 text-4xl font-semibold tracking-tight text-stone-50">
-                    {row.total_points}
+                  <div className="mt-2 flex items-baseline gap-3">
+                    <span className="text-4xl font-semibold tracking-tight text-stone-50">
+                      {row.total_points}
+                    </span>
+                    {row.rank_change != null && row.rank_change !== 0 && (
+                      <span
+                        className={`text-sm font-medium ${
+                          row.rank_change > 0
+                            ? "text-emerald-400"
+                            : "text-red-400"
+                        }`}
+                      >
+                        {row.rank_change > 0 ? "▲" : "▼"}
+                        {Math.abs(row.rank_change)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Panel>
@@ -223,6 +237,7 @@ export default async function LeaderboardPage() {
                   ownerName={profile?.display_name}
                   teamName={team?.team_name}
                   totalPoints={row.total_points ?? 0}
+                  rankChange={row.rank_change}
                 />
               );
             })}

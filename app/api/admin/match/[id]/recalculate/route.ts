@@ -97,6 +97,20 @@ export async function POST(
     }
   }
 
+  // Snapshot current ranks before updating so we can track movement
+  const { data: currentLeaderboard } = await supabase
+    .from("leaderboard")
+    .select("fantasy_team_id, total_points")
+    .eq("season_id", match.season_id)
+    .order("total_points", { ascending: false });
+
+  const previousRankMap: Record<number, number> = {};
+  if (currentLeaderboard) {
+    currentLeaderboard.forEach((row, index) => {
+      previousRankMap[row.fantasy_team_id] = index + 1;
+    });
+  }
+
   for (const team of fantasyTeams) {
     const { data: teamMatchRows, error: teamMatchRowsError } = await supabase
       .from("team_match_points")
@@ -122,6 +136,7 @@ export async function POST(
           fantasy_team_id: team.id,
           season_id: team.season_id,
           total_points: totalSeasonPoints,
+          previous_rank: previousRankMap[team.id] ?? null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "fantasy_team_id,season_id" }
