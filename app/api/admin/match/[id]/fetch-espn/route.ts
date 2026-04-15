@@ -100,12 +100,24 @@ export async function GET(
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
         "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        Referer: "https://www.espncricinfo.com/",
+        "Upgrade-Insecure-Requests": "1",
+        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
       },
     });
 
     if (!response.ok) {
+      console.error(`[fetch-espn] ESPNCricinfo returned HTTP ${response.status} for ${espnUrl}`);
       return NextResponse.json(
         {
           success: false,
@@ -117,10 +129,12 @@ export async function GET(
 
     html = await response.text();
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Network error";
+    console.error(`[fetch-espn] fetch threw: ${message}`, err);
     return NextResponse.json(
       {
         success: false,
-        error: `Could not reach ESPNCricinfo: ${err instanceof Error ? err.message : "Network error"}.`,
+        error: `Could not reach ESPNCricinfo: ${message}.`,
       },
       { status: 502 }
     );
