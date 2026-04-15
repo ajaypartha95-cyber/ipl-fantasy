@@ -27,6 +27,21 @@ async function getLeaderboard() {
   };
 }
 
+async function getTopPlayers() {
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/leaderboard/top-players`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    return json.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 async function getProgression() {
   try {
     const res = await fetch(`${getBaseUrl()}/api/leaderboard/progression`, {
@@ -46,6 +61,14 @@ async function getProgression() {
   } catch {
     return { managers: [], leader_team_id: null, matches: [] };
   }
+}
+
+function getRoleTone(role?: string): "gold" | "info" | "success" | "default" {
+  const value = (role || "").toLowerCase();
+  if (value.includes("all")) return "gold";
+  if (value.includes("bowl")) return "info";
+  if (value.includes("bat")) return "success";
+  return "default";
 }
 
 function getProfileAndTeam(row: any) {
@@ -79,9 +102,10 @@ function getPodiumCardClass(rank: number) {
 }
 
 export default async function LeaderboardPage() {
-  const [leaderboardPayload, progressionPayload] = await Promise.all([
+  const [leaderboardPayload, progressionPayload, topPlayers] = await Promise.all([
     getLeaderboard(),
     getProgression(),
+    getTopPlayers(),
   ]);
   const rows = leaderboardPayload.rows;
   const summary = leaderboardPayload.summary;
@@ -290,6 +314,47 @@ export default async function LeaderboardPage() {
                 />
               );
             })}
+          </div>
+        </Panel>
+      </section>
+
+      <section className="mt-8">
+        <SectionTitle
+          eyebrow="Players"
+          title="Top 10 players by fantasy points"
+          subtitle="Players ranked by total fantasy points earned across all completed matches."
+        />
+
+        <Panel className="mt-6 overflow-hidden">
+          <div className="hidden border-b border-white/10 bg-white/[0.03] px-5 py-4 text-xs uppercase tracking-[0.18em] text-stone-500 md:grid md:grid-cols-[80px_1.2fr_160px_1fr_160px]">
+            <div>Rank</div>
+            <div>Player</div>
+            <div>Role</div>
+            <div>IPL Team</div>
+            <div className="text-right">Total points</div>
+          </div>
+
+          <div>
+            {topPlayers.map((player: any) => (
+              <div
+                key={player.player_id}
+                className="grid items-center gap-4 border-t border-white/10 px-5 py-4 first:border-t-0 md:grid-cols-[80px_1.2fr_160px_1fr_160px]"
+              >
+                <div>
+                  <Pill tone={player.rank === 1 ? "gold" : player.rank === 2 ? "info" : "default"}>
+                    #{player.rank}
+                  </Pill>
+                </div>
+                <div className="font-medium text-stone-50">{player.name || "—"}</div>
+                <div>
+                  <Pill tone={getRoleTone(player.role)}>{player.role || "—"}</Pill>
+                </div>
+                <div className="text-stone-300">{player.ipl_team || "—"}</div>
+                <div className="text-right text-2xl font-semibold tracking-tight text-stone-50">
+                  {player.total_points}
+                </div>
+              </div>
+            ))}
           </div>
         </Panel>
       </section>
