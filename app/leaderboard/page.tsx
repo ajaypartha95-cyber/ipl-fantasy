@@ -5,6 +5,7 @@ import { Pill } from "@/components/premium/pill";
 import { MetricCard } from "@/components/premium/metric-card";
 import { SectionTitle } from "@/components/premium/section-title";
 import { LeaderboardRow } from "@/components/premium/leaderboard-row";
+import { ProgressionChart } from "@/components/premium/progression-chart";
 
 async function getLeaderboard() {
   const res = await fetch(`${getBaseUrl()}/api/leaderboard`, {
@@ -24,6 +25,27 @@ async function getLeaderboard() {
       total_matches: 0,
     },
   };
+}
+
+async function getProgression() {
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/leaderboard/progression`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return { managers: [], leader_team_id: null, matches: [] };
+    }
+
+    const json = await res.json();
+    return {
+      managers: json.managers ?? [],
+      leader_team_id: json.leader_team_id ?? null,
+      matches: json.matches ?? [],
+    };
+  } catch {
+    return { managers: [], leader_team_id: null, matches: [] };
+  }
 }
 
 function getProfileAndTeam(row: any) {
@@ -57,11 +79,22 @@ function getPodiumCardClass(rank: number) {
 }
 
 export default async function LeaderboardPage() {
-  const leaderboardPayload = await getLeaderboard();
+  const [leaderboardPayload, progressionPayload] = await Promise.all([
+    getLeaderboard(),
+    getProgression(),
+  ]);
   const rows = leaderboardPayload.rows;
   const summary = leaderboardPayload.summary;
   const topThree = rows.slice(0, 3);
   const leader = rows[0];
+
+  const progressionMatchNumbers = progressionPayload.matches.map(
+    (m: { match_number: number }) => m.match_number
+  );
+  const lastScoredMatch =
+    progressionMatchNumbers.length > 0
+      ? Math.max(...progressionMatchNumbers)
+      : 0;
 
   const leaderProfile = leader ? getProfileAndTeam(leader).profile : null;
   const leaderTeam = leader ? getProfileAndTeam(leader).team : null;
@@ -153,6 +186,22 @@ export default async function LeaderboardPage() {
             </div>
           </Panel>
         </div>
+      </section>
+
+      <section className="mt-8">
+        <SectionTitle
+          eyebrow="Trajectory"
+          title="Points over time"
+          subtitle="Cumulative fantasy points after every completed match. Hover to inspect a fixture, click a manager in the legend to toggle."
+        />
+
+        <Panel className="mt-6 p-6">
+          <ProgressionChart
+            managers={progressionPayload.managers}
+            leaderTeamId={progressionPayload.leader_team_id}
+            totalMatches={lastScoredMatch}
+          />
+        </Panel>
       </section>
 
       <section className="mt-8">
