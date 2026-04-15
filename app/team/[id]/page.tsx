@@ -5,6 +5,7 @@ import { Panel } from "@/components/premium/panel";
 import { Pill } from "@/components/premium/pill";
 import { MetricCard } from "@/components/premium/metric-card";
 import { SectionTitle } from "@/components/premium/section-title";
+import { SquadTable } from "@/components/premium/squad-table";
 
 async function getTeam(id: string) {
   const res = await fetch(`${getBaseUrl()}/api/team/${id}`, {
@@ -40,14 +41,6 @@ function formatMatchDate(dateString: string) {
   });
 }
 
-function getRoleTone(role?: string): "gold" | "info" | "success" | "default" {
-  const value = (role || "").toLowerCase();
-
-  if (value.includes("all")) return "gold";
-  if (value.includes("bowl")) return "info";
-  if (value.includes("bat")) return "success";
-  return "default";
-}
 
 export default async function TeamDetailsPage({
   params,
@@ -198,47 +191,11 @@ export default async function TeamDetailsPage({
         />
 
         <Panel className="mt-6 overflow-hidden">
-          <div className="hidden border-b border-white/10 bg-white/[0.03] px-5 py-4 text-xs uppercase tracking-[0.18em] text-stone-500 md:grid md:grid-cols-[1.2fr_180px_1fr_180px]">
-            <div>Player</div>
-            <div>Role</div>
-            <div>IPL team</div>
-            <div>Tag</div>
-          </div>
-
-          <div>
-            {players.map((item: any) => {
-              const player = Array.isArray(item.players) ? item.players[0] : item.players;
-              const isCaptain = player?.id === captainId;
-              const isViceCaptain = player?.id === viceCaptainId;
-
-              return (
-                <div
-                  key={item.id}
-                  className="grid items-center gap-4 border-t border-white/10 px-5 py-4 first:border-t-0 md:grid-cols-[1.2fr_180px_1fr_180px]"
-                >
-                  <div>
-                    <div className="font-medium text-stone-50">{player?.name}</div>
-                  </div>
-
-                  <div>
-                    <Pill tone={getRoleTone(player?.role)}>{player?.role}</Pill>
-                  </div>
-
-                  <div className="text-stone-300">{player?.ipl_team}</div>
-
-                  <div>
-                    {isCaptain ? (
-                      <Pill tone="gold">Captain</Pill>
-                    ) : isViceCaptain ? (
-                      <Pill tone="info">Vice-Captain</Pill>
-                    ) : (
-                      <Pill tone="default">Squad</Pill>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <SquadTable
+            players={players}
+            captainId={captainId}
+            viceCaptainId={viceCaptainId}
+          />
         </Panel>
       </section>
 
