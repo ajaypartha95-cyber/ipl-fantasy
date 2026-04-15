@@ -1001,84 +1001,19 @@ export default function AdminMatchPage({
       const res = await fetch(url.toString());
       const result = await res.json();
 
-      if (res.ok && result.success) {
-        const battingRows = result.parsed?.battingRows ?? [];
-        const bowlingRows = result.parsed?.bowlingRows ?? [];
-        setParsedBattingRows(battingRows);
-        setParsedBowlingRows(bowlingRows);
-        applyParsedRowsToScores(battingRows, bowlingRows);
-        setEspnImportStatus(
-          `Imported • ${battingRows.length} batting • ${bowlingRows.length} bowling rows`
-        );
+      if (!res.ok || !result.success) {
+        setEspnImportStatus(result.error ?? "Failed to fetch scorecard.");
         return;
       }
 
-      // Server-side blocked (Cloudflare IP ban on Vercel) — fall back to direct browser fetch.
-      // The browser's own IP is residential and won't be blocked.
-      if (res.status === 502) {
-        setEspnImportStatus("Server blocked — retrying via browser...");
-        const idsMatch = espnUrl.trim().match(/\/series\/[^/]+-(\d+)\/[^/]+-(\d+)/);
-        if (!idsMatch) {
-          setEspnImportStatus("Could not parse match IDs from the URL.");
-          return;
-        }
-        const [, seriesId, matchId2] = idsMatch;
-        const apiUrl =
-          `https://hs-consumer-api.espncricinfo.com/v1/pages/match/scorecard` +
-          `?lang=en&seriesId=${seriesId}&matchId=${matchId2}`;
-
-        const directRes = await fetch(apiUrl);
-        if (!directRes.ok) {
-          setEspnImportStatus(
-            `ESPNCricinfo returned HTTP ${directRes.status}. Try the screenshot import instead.`
-          );
-          return;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data = (await directRes.json()) as { scorecard?: any[] };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const targetInnings = (data.scorecard ?? []).find((i: any) => i.inningNumber === selectedInnings);
-        if (!targetInnings) {
-          const available = (data.scorecard ?? [])
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((i: any) => i.inningNumber)
-            .join(", ");
-          setEspnImportStatus(
-            `Innings ${selectedInnings} not found. Available: ${available || "none"}.`
-          );
-          return;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const battingRows = (targetInnings.batsmen ?? []).filter((b: any) => b.battedType === "yes").map((b: any) => ({
-          name: (b.player.longName ?? b.player.name) as string,
-          dismissalText: b.isOut ? (b.dismissalText?.long ?? "") : "not out",
-          runs: (b.runs ?? 0) as number,
-          balls: (b.balls ?? 0) as number,
-          fours: (b.fours ?? 0) as number,
-          sixes: (b.sixes ?? 0) as number,
-        }));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const bowlingRows = (targetInnings.bowlers ?? []).map((b: any) => ({
-          name: (b.player.longName ?? b.player.name) as string,
-          overs: (b.overs ?? 0) as number,
-          maidens: (b.maidens ?? 0) as number,
-          runsConceded: (b.conceded ?? 0) as number,
-          wickets: (b.wickets ?? 0) as number,
-          dotBalls: (b.dots ?? 0) as number,
-        }));
-
-        setParsedBattingRows(battingRows);
-        setParsedBowlingRows(bowlingRows);
-        applyParsedRowsToScores(battingRows, bowlingRows);
-        setEspnImportStatus(
-          `Imported • ${battingRows.length} batting • ${bowlingRows.length} bowling rows`
-        );
-        return;
-      }
-
-      setEspnImportStatus(result.error ?? "Failed to fetch scorecard.");
+      const battingRows = result.parsed?.battingRows ?? [];
+      const bowlingRows = result.parsed?.bowlingRows ?? [];
+      setParsedBattingRows(battingRows);
+      setParsedBowlingRows(bowlingRows);
+      applyParsedRowsToScores(battingRows, bowlingRows);
+      setEspnImportStatus(
+        `Imported • ${battingRows.length} batting • ${bowlingRows.length} bowling rows`
+      );
     } catch {
       setEspnImportStatus("Request failed. Check the URL and try again.");
     } finally {

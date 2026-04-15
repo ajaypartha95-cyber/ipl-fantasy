@@ -92,36 +92,44 @@ export async function GET(
     );
   }
 
+  // When SCRAPER_API_KEY is set (Vercel), route through ScraperAPI to bypass Cloudflare IP blocks.
+  // ScraperAPI free tier: 1000 credits/month — plenty for an IPL season (~150 innings imports).
+  // Sign up at https://scraperapi.com (no credit card required for free tier).
+  const scraperApiKey = process.env.SCRAPER_API_KEY;
+  const fetchUrl = scraperApiKey
+    ? `https://api.scraperapi.com?api_key=${scraperApiKey}&url=${encodeURIComponent(espnUrl)}`
+    : espnUrl;
+  const fetchOptions: RequestInit = scraperApiKey
+    ? {} // ScraperAPI handles browser simulation
+    : {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Cache-Control": "no-cache",
+          "Upgrade-Insecure-Requests": "1",
+          "sec-fetch-dest": "document",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-site": "none",
+          "sec-fetch-user": "?1",
+        },
+      };
+
   let html: string;
   try {
-    const response = await fetch(espnUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-        "Upgrade-Insecure-Requests": "1",
-        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "none",
-        "sec-fetch-user": "?1",
-      },
-    });
+    const response = await fetch(fetchUrl, fetchOptions);
 
     if (!response.ok) {
-      console.error(`[fetch-espn] ESPNCricinfo returned HTTP ${response.status} for ${espnUrl}`);
+      console.error(
+        `[fetch-espn] ${scraperApiKey ? "ScraperAPI" : "Direct"} returned HTTP ${response.status} for ${espnUrl}`
+      );
+      const hint = scraperApiKey
+        ? "ScraperAPI returned an error — check your API key or credit balance."
+        : "ESPNCricinfo is blocking server-side requests. Set SCRAPER_API_KEY in Vercel env vars to enable cloud imports (scraperapi.com, free tier available). Or use the screenshot import instead.";
       return NextResponse.json(
-        {
-          success: false,
-          error: `ESPNCricinfo returned HTTP ${response.status}. The site may be blocking server-side requests — try the screenshot import instead.`,
-        },
+        { success: false, error: hint },
         { status: 502 }
       );
     }
