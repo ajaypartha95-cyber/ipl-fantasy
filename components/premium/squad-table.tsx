@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pill } from "./pill";
 
 type Player = {
-  id: string;
+  id: number;
   name: string;
   role?: string;
   ipl_team?: string;
